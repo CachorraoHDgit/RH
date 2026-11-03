@@ -290,17 +290,26 @@ function aplicarAjustesPonto() {
   });
 
   DB.fichasAplicadas = DB.fichasAplicadas || {};
+  // Domingos que já estavam montados no site antes desta importação: não mexe neles
+  const montados = new Set();
+  Object.entries(DB.domingos).forEach(([loja, q]) => Object.entries(q).forEach(([d, l]) => { if (l.length) montados.add(loja + '|' + d); }));
   pessoas.filter(p => p.rh).forEach(p => {
     const assinatura = JSON.stringify(p.rh);
     if (DB.fichasAplicadas[p.codigo] === assinatura) return;
+    // Primeira vez: aplica a ficha inteira. Ficha mudou depois: só preenche o que está em branco,
+    // para não desfazer o que foi configurado no site.
+    const primeira = !(p.codigo in DB.fichasAplicadas);
     let f = acharFuncionario(p.codigo, p.nome);
     if (!f) {
       if (!p.rh.loja) return;
       DB.funcionarios.push(f = funcionarioDoPonto(p));
     }
-    ['loja', 'sexo', 'inicio', 'feriasDesde', 'situacao', 'cargo', 'funcoes', 'folgas'].forEach(k => { if (p.rh[k]) f[k] = p.rh[k]; });
+    const vazio = v => !v || (Array.isArray(v) && !v.length);
+    ['loja', 'sexo', 'inicio', 'feriasDesde', 'situacao', 'cargo', 'funcoes', 'folgas'].forEach(k => {
+      if (p.rh[k] && (primeira || vazio(f[k]))) f[k] = p.rh[k];
+    });
     if (!f.funcoes.length) f.funcoes = funcoesDoCargo(f.cargo);
-    folgasDeDomingo(f, p.rh.domingos);
+    folgasDeDomingo(f, (p.rh.domingos || []).filter(d => primeira || !montados.has(f.loja + '|' + d)));
     DB.fichasAplicadas[p.codigo] = assinatura;
     mudou = true;
   });
