@@ -1,0 +1,7 @@
+# Batidas e nomes dos funcionários: ficam só neste computador
+dados-ponto
+# Rotina de busca do ponto (roda fora do site)
+ferramentas
+# Chaves e configuração local do Vercel
+.env*
+.vercel
