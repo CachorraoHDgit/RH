@@ -214,6 +214,10 @@ function formFuncionario(f, inicial) {
       DB.pontoPessoas.map(p => [p.codigo, p.nome]).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')), f.codigoPonto, 'Mesmo nome do cadastro')}</select></label>` : ''}
     <div class="grade-2">
       <label class="campo"><span>Data de início</span><input type="date" name="inicio" value="${f.inicio}"></label>
+      <label class="campo"><span>Férias em aberto desde</span><input type="date" name="feriasDesde" value="${f.feriasDesde || ''}"
+        title="Início do período aquisitivo mais antigo que ainda não foi tirado. Em branco = desde a admissão."></label>
+    </div>
+    <div class="grade-2">
       <label class="campo"><span>Situação</span><select name="situacao">${opcoes(SITUACOES, f.situacao)}</select></label>
     </div>
     <label class="campo" id="linha-saida" ${f.situacao === 'Desligado' ? '' : 'hidden'}><span>Data de saída</span>
@@ -238,6 +242,7 @@ function formFuncionario(f, inicial) {
       codigoPonto: dados.has('codigoPonto') ? dados.get('codigoPonto') : f.codigoPonto,
       folgas: Object.keys(FOLGAS).filter(d => dados.getAll('folgas').includes(d)),
       inicio: dados.get('inicio'),
+      feriasDesde: dados.get('feriasDesde'),
       situacao: dados.get('situacao'),
       saida: dados.get('situacao') === 'Desligado' ? dados.get('saida') : '',
       obs: dados.get('obs').trim(),
@@ -550,7 +555,7 @@ function telaFerias() {
       <thead><tr><th>Colaborador / Loja</th><th>Início no trabalho</th><th>Período aquisitivo</th><th>Data limite</th>
         <th>Férias marcadas</th><th>Volta</th><th>Substituto</th><th>Status</th><th></th></tr></thead>
       <tbody>${linhas}</tbody></table></div>` : '<div class="vazio">Cadastre os funcionários primeiro.</div>'}
-    <p class="nota">Data limite = fim dos 12 meses seguintes ao período aquisitivo. Quem está de férias sai
+    <p class="nota">Data limite = último dia para começar 30 dias de férias dentro dos 12 meses seguintes ao período aquisitivo (igual ao relatório da contabilidade). Quem está de férias sai
       automaticamente da escala nos dias marcados. <strong>Confirmar as regras de férias com o contador.</strong></p>`;
 }
 

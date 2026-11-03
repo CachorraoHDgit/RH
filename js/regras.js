@@ -288,17 +288,20 @@ function alternarFolgaDomingo(loja, data, funcId) {
 
 // ---------- Férias ----------
 
-// Períodos aquisitivos até o que está em andamento hoje
+// Períodos aquisitivos até o que está em andamento hoje. Começa no período mais antigo ainda em aberto
+// (feriasDesde, do relatório da contabilidade); sem ele, na admissão.
+// Limite = último dia para começar 30 dias de férias dentro dos 12 meses seguintes (igual ao relatório).
 function periodosAquisitivos(f, ate = hoje()) {
-  if (!f.inicio) return [];
+  const base = f.feriasDesde || f.inicio;
+  if (!base) return [];
   const lista = [];
   for (let k = 0; ; k++) {
-    const inicio = addAnos(f.inicio, k);
+    const inicio = addAnos(base, k);
     if (inicio > ate && k > 0) break;
     lista.push({
       inicio,
-      fim: addDias(addAnos(f.inicio, k + 1), -1),
-      limite: addDias(addAnos(f.inicio, k + 2), -1),
+      fim: addDias(addAnos(base, k + 1), -1),
+      limite: addDias(addAnos(base, k + 2), -30),
     });
     if (k > 80) break;
   }

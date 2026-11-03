@@ -242,7 +242,7 @@ function funcionarioDoPonto(p, loja) {
     id: novoId(), nome: nomeProprio(p.nome), loja: loja || lojaDaPessoa(p) || LOJAS[0], cargo, sexo: rh.sexo || '',
     funcoes: rh.funcoes || funcoesDoCargo(cargo),
     turno: entrada ? (entrada < '14:00' ? 'Dia' : 'Noite') : '', entrada, horaSaida: p.saida || '',
-    codigoPonto: p.codigo, folgas: rh.folgas || [], inicio: rh.inicio || '', situacao: 'Ativo', saida: '', alternaDomingos: false, obs: '',
+    codigoPonto: p.codigo, folgas: rh.folgas || [], inicio: rh.inicio || '', feriasDesde: rh.feriasDesde || '', situacao: rh.situacao || 'Ativo', saida: '', alternaDomingos: false, obs: '',
   };
 }
 
@@ -296,7 +296,7 @@ function aplicarAjustesPonto() {
       if (!p.rh.loja) return;
       DB.funcionarios.push(f = funcionarioDoPonto(p));
     }
-    ['loja', 'sexo', 'inicio', 'cargo', 'funcoes', 'folgas'].forEach(k => { if (p.rh[k]) f[k] = p.rh[k]; });
+    ['loja', 'sexo', 'inicio', 'feriasDesde', 'situacao', 'cargo', 'funcoes', 'folgas'].forEach(k => { if (p.rh[k]) f[k] = p.rh[k]; });
     if (!f.funcoes.length) f.funcoes = funcoesDoCargo(f.cargo);
     folgasDeDomingo(f, p.rh.domingos);
     DB.fichasAplicadas[p.codigo] = assinatura;
@@ -320,7 +320,7 @@ function aplicarAjustesPonto() {
     DB.funcionarios.push({
       id: novoId(), nome: nomeProprio(rh.nome), loja: rh.loja, cargo: rh.cargo || '', sexo: rh.sexo || '',
       funcoes: rh.funcoes || funcoesDoCargo(rh.cargo || ''), turno: '', entrada: '', horaSaida: '', codigoPonto: '',
-      folgas: rh.folgas || [], inicio: rh.inicio || '', situacao: 'Ativo', saida: '', alternaDomingos: false, obs: '',
+      folgas: rh.folgas || [], inicio: rh.inicio || '', feriasDesde: rh.feriasDesde || '', situacao: rh.situacao || 'Ativo', saida: '', alternaDomingos: false, obs: '',
     });
     folgasDeDomingo(DB.funcionarios[DB.funcionarios.length - 1], rh.domingos);
     DB.fichasAplicadas[chave] = true;
