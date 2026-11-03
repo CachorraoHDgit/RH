@@ -257,6 +257,8 @@ function nomeProprio(nome) {
 function cadastrarDoPonto() {
   const novos = pessoasSemVinculo().filter(lojaDaPessoa).map(p => funcionarioDoPonto(p));
   DB.funcionarios.push(...novos);
+  // Quem foi excluído e cadastrado de novo recebe a ficha inteira outra vez (folgas, domingos, férias)
+  if (DB.fichasAplicadas) novos.forEach(f => { delete DB.fichasAplicadas[f.codigoPonto]; });
   aplicarAjustesPonto();
   if (ultimoPonto) importarPonto(ultimoPonto);
   salvar();
@@ -335,7 +337,8 @@ function aplicarAjustesPonto() {
 function folgasDeDomingo(f, datas) {
   (datas || []).forEach(d => {
     const quadro = DB.domingos[f.loja] = DB.domingos[f.loja] || {};
-    const lista = quadro[d] = quadro[d] || [];
+    // Tira quem foi excluído do cadastro
+    const lista = quadro[d] = (quadro[d] || []).filter(id => DB.funcionarios.some(x => x.id === id));
     if (!lista.includes(f.id)) lista.push(f.id);
   });
 }
