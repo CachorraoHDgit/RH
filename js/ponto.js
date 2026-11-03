@@ -298,6 +298,7 @@ function aplicarAjustesPonto() {
     }
     ['loja', 'sexo', 'inicio', 'cargo', 'funcoes', 'folgas'].forEach(k => { if (p.rh[k]) f[k] = p.rh[k]; });
     if (!f.funcoes.length) f.funcoes = funcoesDoCargo(f.cargo);
+    folgasDeDomingo(f, p.rh.domingos);
     DB.fichasAplicadas[p.codigo] = assinatura;
     mudou = true;
   });
@@ -305,17 +306,38 @@ function aplicarAjustesPonto() {
   // Da ficha, mas sem cadastro no ponto: entra uma vez, sem vínculo
   (DB.fichasSemPonto || []).forEach(rh => {
     const chave = 'nome:' + rh.nome;
-    if (DB.fichasAplicadas[chave] || acharFuncionario('', rh.nome)) return;
+    // Nome corrigido na ficha: renomeia o cadastro antigo em vez de criar outro
+    const antigo = rh.unirCom && acharFuncionario('', rh.unirCom);
+    if (antigo && !acharFuncionario('', rh.nome)) { antigo.nome = nomeProprio(rh.nome); mudou = true; }
+    const existente = acharFuncionario('', rh.nome);
+    const assinatura = JSON.stringify(rh.domingos || []);
+    if (existente && rh.domingos && DB.fichasAplicadas['dom:' + rh.nome] !== assinatura) {
+      folgasDeDomingo(existente, rh.domingos);
+      DB.fichasAplicadas['dom:' + rh.nome] = assinatura;
+      mudou = true;
+    }
+    if (DB.fichasAplicadas[chave] || existente) return;
     DB.funcionarios.push({
       id: novoId(), nome: nomeProprio(rh.nome), loja: rh.loja, cargo: rh.cargo || '', sexo: rh.sexo || '',
       funcoes: rh.funcoes || funcoesDoCargo(rh.cargo || ''), turno: '', entrada: '', horaSaida: '', codigoPonto: '',
       folgas: rh.folgas || [], inicio: rh.inicio || '', situacao: 'Ativo', saida: '', alternaDomingos: false, obs: '',
     });
+    folgasDeDomingo(DB.funcionarios[DB.funcionarios.length - 1], rh.domingos);
     DB.fichasAplicadas[chave] = true;
+    DB.fichasAplicadas['dom:' + rh.nome] = JSON.stringify(rh.domingos || []);
     mudou = true;
   });
   if (mudou) salvar();
   return mudou;
+}
+
+// Domingos de folga vindos do quadro (datas AAAA-MM-DD): marca a pessoa no quadro de domingos da loja
+function folgasDeDomingo(f, datas) {
+  (datas || []).forEach(d => {
+    const quadro = DB.domingos[f.loja] = DB.domingos[f.loja] || {};
+    const lista = quadro[d] = quadro[d] || [];
+    if (!lista.includes(f.id)) lista.push(f.id);
+  });
 }
 
 // Pessoas do sistema de ponto que ainda não estão vinculadas a ninguém do RH

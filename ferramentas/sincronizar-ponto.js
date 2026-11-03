@@ -3,6 +3,7 @@
 // Uso (Node 18+), com a chave da API numa variável de ambiente — nunca no código:
 //   PowerShell:  $env:PONTO_CHAVE = '...'; node ferramentas/sincronizar-ponto.js 2026-10-01 2026-10-31
 //   Sem datas, busca os últimos 7 dias até ontem.
+//   Com --ficha, só junta de novo a ficha do RH (dados-ponto/cadastro-rh.json) ao último arquivo.
 //
 // A API libera o relatório de marcações um dia por vez e no máximo 3 relatórios por minuto,
 // então um mês leva uns 11 minutos. Quando o RH for para o servidor do painel, esta mesma rotina
@@ -69,7 +70,40 @@ async function marcacoesDoDia(token, data) {
   return fim.report || { days: [], collectors: {} };
 }
 
+// Ficha do RH (dados-ponto/cadastro-rh.json): sexo, admissão, loja, cargo, folgas e domingos que o ponto não tem
+function juntarFicha(saida) {
+  const chaveNome = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+  const arqFicha = require('path').join(__dirname, '..', 'dados-ponto', 'cadastro-rh.json');
+  const ficha = fs.existsSync(arqFicha) ? JSON.parse(fs.readFileSync(arqFicha, 'utf8')) : {};
+  const fichaPorNome = {};
+  Object.entries(ficha).forEach(([nome, rh]) => { if (!nome.startsWith('_')) fichaPorNome[chaveNome(nome)] = rh; });
+  saida.pessoas.forEach(p => { delete p.rh; if (fichaPorNome[chaveNome(p.nome)]) p.rh = fichaPorNome[chaveNome(p.nome)]; });
+  // Quem está na ficha mas não no ponto (ex.: gerente que não bate ponto) entra direto no cadastro
+  const doPonto = new Set(saida.pessoas.map(p => chaveNome(p.nome)));
+  saida.fichasSemPonto = Object.entries(fichaPorNome).filter(([nome]) => !doPonto.has(nome)).map(([nome, rh]) => ({ nome, ...rh }));
+}
+
+// Salva em RH/dados-ponto, onde a tela Ponto procura o arquivo para importar
+function gravar(saida) {
+  const pasta = require('path').join(__dirname, '..', 'dados-ponto');
+  fs.mkdirSync(pasta, { recursive: true });
+  const arquivo = require('path').join(pasta, `ponto-${saida.inicio}-a-${saida.fim}.json`);
+  fs.writeFileSync(arquivo, JSON.stringify(saida));
+  // ultimo.js: o site carrega sozinho ao abrir, sem precisar importar
+  fs.writeFileSync(require('path').join(pasta, 'ultimo.js'), `window.PONTO_ULTIMO = ${JSON.stringify(saida)};\n`);
+  return arquivo;
+}
+
 async function main() {
+  // --ficha: só junta a ficha do RH de novo ao último arquivo, sem consultar o ponto
+  if (process.argv[2] === '--ficha') {
+    const ultimo = require('path').join(__dirname, '..', 'dados-ponto', 'ultimo.js');
+    const saida = JSON.parse(fs.readFileSync(ultimo, 'utf8').replace(/^window\.PONTO_ULTIMO = /, '').replace(/;\s*$/, ''));
+    saida.geradoEm = new Date().toISOString();
+    juntarFicha(saida);
+    console.log(`Ficha atualizada em ${gravar(saida)}`);
+    return;
+  }
   const chave = process.env.PONTO_CHAVE;
   if (!chave) { console.error('Defina a variável PONTO_CHAVE com a chave da API do Ponto System.'); process.exit(1); }
   const ontem = addDias(iso(new Date()), -1);
@@ -104,16 +138,7 @@ async function main() {
     console.log(`${data}: ${(rel.days || []).reduce((s, d) => s + d.employees.length, 0)} pessoas`);
   }
 
-  // Ficha do RH (dados-ponto/cadastro-rh.json): sexo, admissão, loja, cargo e folgas que o ponto não tem
-  const chaveNome = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
-  const arqFicha = require('path').join(__dirname, '..', 'dados-ponto', 'cadastro-rh.json');
-  const ficha = fs.existsSync(arqFicha) ? JSON.parse(fs.readFileSync(arqFicha, 'utf8')) : {};
-  const fichaPorNome = {};
-  Object.entries(ficha).forEach(([nome, rh]) => { if (!nome.startsWith('_')) fichaPorNome[chaveNome(nome)] = rh; });
-  saida.pessoas.forEach(p => { if (fichaPorNome[chaveNome(p.nome)]) p.rh = fichaPorNome[chaveNome(p.nome)]; });
-  // Quem está na ficha mas não no ponto (ex.: gerente que não bate ponto) entra direto no cadastro
-  const doPonto = new Set(saida.pessoas.map(p => chaveNome(p.nome)));
-  saida.fichasSemPonto = Object.entries(fichaPorNome).filter(([nome]) => !doPonto.has(nome)).map(([nome, rh]) => ({ nome, ...rh }));
+  juntarFicha(saida);
 
   // Relógio onde cada pessoa mais bateu ponto no período (indica a loja)
   saida.pessoas.forEach(p => {
@@ -122,13 +147,7 @@ async function main() {
     p.local = Object.keys(conta).sort((a, b) => conta[b] - conta[a])[0] || '';
   });
 
-  // Salva em RH/dados-ponto, onde a tela Ponto procura o arquivo para importar
-  const pasta = require('path').join(__dirname, '..', 'dados-ponto');
-  fs.mkdirSync(pasta, { recursive: true });
-  const arquivo = require('path').join(pasta, `ponto-${inicio}-a-${fim}.json`);
-  fs.writeFileSync(arquivo, JSON.stringify(saida));
-  // ultimo.js: o site carrega sozinho ao abrir, sem precisar importar
-  fs.writeFileSync(require('path').join(pasta, 'ultimo.js'), `window.PONTO_ULTIMO = ${JSON.stringify(saida)};\n`);
+  const arquivo = gravar(saida);
   console.log(`Pronto: ${saida.batidas.length} batidas em ${arquivo}`);
 }
 
