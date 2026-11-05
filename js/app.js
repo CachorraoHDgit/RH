@@ -1055,14 +1055,6 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !document.getElementById('modal').hidden) fecharModal();
 });
 
-// Batidas mais recentes do Ponto System (dados-ponto/ultimo.js, gerado pela sincronização):
-// entram sozinhas quando o arquivo é novo
-if (window.PONTO_ULTIMO) {
-  try {
-    if (DB.pontoImportado !== PONTO_ULTIMO.geradoEm) importarPonto(PONTO_ULTIMO);
-    else ultimoPonto = PONTO_ULTIMO;
-    if (aplicarAjustesPonto()) importarPonto(PONTO_ULTIMO);
-  } catch (e) { /* arquivo com problema: segue sem as batidas */ }
-}
-
+// Mostra a cópia deste computador e em seguida liga ao servidor (dados de todos + ponto do dia)
 render();
+iniciarNuvem();

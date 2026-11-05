@@ -1,5 +1,4 @@
-// Cadastro e persistência. Os dados ficam no navegador (localStorage)
-// até o site ser ligado ao banco da operação Mini Dog.
+// Cadastro e persistência. Os dados ficam no servidor do RH (js/nuvem.js), com cópia no navegador (localStorage).
 
 const LOJAS = ['Jardim Atlântico', 'Campeche', 'Itacorubi', 'Palhoça', 'Biguaçu', 'Forquilhinhas', 'Produção', 'Administrativo'];
 
@@ -115,9 +114,8 @@ let DB = carregar();
 function salvar() {
   try {
     localStorage.setItem(CHAVE, JSON.stringify(DB));
-  } catch (e) {
-    alert('Não foi possível salvar os dados neste navegador. Exporte um backup.');
-  }
+  } catch (e) { /* cópia local cheia: o servidor continua guardando */ }
+  if (typeof nuvemSalvou === 'function') nuvemSalvou();
 }
 
 function funcionario(id) {

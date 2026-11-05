@@ -5,3 +5,4 @@ ferramentas
 # Chaves e configuração local do Vercel
 .env*
 .vercel
+supabase

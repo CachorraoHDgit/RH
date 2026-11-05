@@ -533,3 +533,10 @@ button.chip:hover { border-color: var(--red-primary); color: var(--red-primary);
   .painel-extra { break-before: page; box-shadow: none; }
 }
 @page paisagem { size: A4 landscape; margin: 8mm; }
+
+/* Situação do salvamento no servidor (rodapé da barra lateral) */
+.nuvem-status { display: block; padding: 0 16px 10px; font-size: 11px; line-height: 1.35; color: var(--text-muted); }
+.nuvem-status.ok { color: var(--green); }
+.nuvem-status.aviso { color: var(--amber); }
+.nuvem-status.erro { color: var(--red-primary); }
+@media print { .nuvem-status { display: none; } }
