@@ -3,3 +3,4 @@ dados-ponto/
 # Chaves e configuração local do Vercel
 .vercel
 .env*
+supabase/.temp/
