@@ -86,6 +86,7 @@ function seletorMes() {
 // ---------- 1. Funcionários ----------
 
 function situacaoAtual(f) {
+  if (f.situacao === 'Afastado' && !afastadoEm(f, hoje())) return 'Ativo';
   if (f.situacao === 'Ativo' && feriasEm(f.id, hoje())) return 'Férias';
   return f.situacao;
 }
@@ -114,7 +115,7 @@ function telaFuncionarios() {
       <td data-label="Turno">${esc(f.turno) || '—'}${f.entrada ? `<br><small>${f.entrada}${f.horaSaida ? ' às ' + f.horaSaida : ''}</small>` : ''}</td>
       <td data-label="Folga fixa">${f.folgas.length ? f.folgas.map(d => FOLGAS[d]).join(', ') : etiqueta('Definir', 'erro')}</td>
       <td data-label="Início">${br(f.inicio) || '—'}</td>
-      <td data-label="Situação">${etiqueta(s, tipoSit)}${f.situacao === 'Desligado' && f.saida ? `<small> em ${br(f.saida)}</small>` : ''}</td>
+      <td data-label="Situação">${etiqueta(s, tipoSit)}${f.situacao === 'Desligado' && f.saida ? `<small> em ${br(f.saida)}</small>` : ''}${s === 'Afastado' ? `<br><small>${esc(textoAfastamento(f))}</small>` : ''}</td>
       <td class="acoes">
         <button class="btn btn-claro" data-acao="editar-func" data-id="${f.id}">Editar</button>
         ${f.situacao !== 'Desligado' ? `<button class="btn btn-perigo" data-acao="desligar" data-id="${f.id}">Desligar</button>` : ''}
@@ -222,6 +223,11 @@ function formFuncionario(f, inicial) {
     </div>
     <label class="campo" id="linha-saida" ${f.situacao === 'Desligado' ? '' : 'hidden'}><span>Data de saída</span>
       <input type="date" name="saida" value="${f.saida}"></label>
+    <div class="grade-2" id="linha-afastamento" ${f.situacao === 'Afastado' ? '' : 'hidden'}>
+      <label class="campo"><span>Motivo</span><select name="motivoAfastamento">${opcoes(MOTIVOS_AFASTAMENTO, f.motivoAfastamento || MOTIVOS_AFASTAMENTO[0])}</select></label>
+      <label class="campo"><span>Volta em <small>(previsão)</small></span><input type="date" name="retorno" value="${f.retorno || ''}"
+        title="A partir desse dia a pessoa volta sozinha para a escala. Em branco = fica fora até mudar a situação."></label>
+    </div>
     <label class="campo campo-largo"><span>Observação</span>
       <input name="obs" value="${esc(f.obs)}" placeholder='ex.: "não trabalha domingo", "aceita freelancer"'></label>
   `, (dados, form) => {
@@ -245,6 +251,8 @@ function formFuncionario(f, inicial) {
       feriasDesde: dados.get('feriasDesde'),
       situacao: dados.get('situacao'),
       saida: dados.get('situacao') === 'Desligado' ? dados.get('saida') : '',
+      motivoAfastamento: dados.get('situacao') === 'Afastado' ? dados.get('motivoAfastamento') : '',
+      retorno: dados.get('situacao') === 'Afastado' ? dados.get('retorno') : '',
       obs: dados.get('obs').trim(),
     };
     if (novo) DB.funcionarios.push({ id: novoId(), ...reg });
@@ -264,7 +272,10 @@ function formFuncionario(f, inicial) {
     });
     form.addEventListener('change', e => {
       if (e.target.name === 'sexo') form.querySelector('#linha-alterna').hidden = e.target.value !== 'H';
-      if (e.target.name === 'situacao') form.querySelector('#linha-saida').hidden = e.target.value !== 'Desligado';
+      if (e.target.name === 'situacao') {
+        form.querySelector('#linha-saida').hidden = e.target.value !== 'Desligado';
+        form.querySelector('#linha-afastamento').hidden = e.target.value !== 'Afastado';
+      }
       // Sem funções marcadas ainda: começa pela função do próprio cargo
       if (e.target.name === 'cargo' && !funcoes.length && e.target.value) {
         funcoes = [e.target.value];
@@ -296,46 +307,14 @@ function telaFolgas() {
   const dias = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
   if (equipe.some(f => f.folgas.includes('dom'))) dias.push('dom');
   const colunas = dias.map(d => {
-    const nomes = equipe.filter(f => f.folgas.includes(d)).map(f => `<li>${esc(f.nome)}</li>`).join('');
+    // Quem está de licença o mês todo não aparece nas folgas fixas
+    const nomes = equipe.filter(f => f.folgas.includes(d) && domingos.some(x => !afastadoEm(f, x))).map(f => `<li>${esc(f.nome)}</li>`).join('');
     const fds = d === 'sex' || d === 'sab' || d === 'dom';
     const vazio = fds ? '<p class="todos">Todos trabalham</p>' : '<p class="ninguem">—</p>';
     return `<div class="dia-col${fds ? ' fds' : ''}"><h3>${SEMANA_CURTA[SEMANA.indexOf(d)]}</h3>${nomes ? `<ul>${nomes}</ul>` : vazio}</div>`;
   }).join('');
 
-  const daEscala = equipe.filter(entraNaEscala);
-  const cartoesDomingo = domingos.map(d => {
-    const r = escalaDia(loja, d);
-    const folgam = [], trabalham = [];
-    daEscala.forEach(f => {
-      const st = statusDia(f, d);
-      if (!st) return;
-      if (st.trabalha) trabalham.push({ f });
-      else folgam.push({ f, motivo: st.motivo });
-    });
-    const chip = ({ f, motivo }) => {
-      const trocavel = (!motivo || motivo === 'domingo');
-      const extra = motivo && motivo !== 'domingo' ? ` <small>(${motivo})</small>` : '';
-      return trocavel
-        ? `<button class="chip chip-${f.sexo}" data-acao="troca-domingo" data-dia="${d}" data-id="${f.id}">${esc(f.nome)}</button>`
-        : `<span class="chip chip-${f.sexo} fixo">${esc(f.nome)}${extra}</span>`;
-    };
-    const freelas = r.marcados.map(chipFreela).join('');
-    return `<div class="domingo${r.alerta ? ' com-alerta' : ''}">
-      <div class="domingo-topo">
-        <h3>Domingo ${brCurta(d)}</h3>
-        ${r.feriado ? etiqueta('Feriado · ' + r.feriado.nome, 'erro') : ''}
-        ${r.vespera ? etiqueta('Véspera de feriado', 'aviso') : ''}
-        ${!quadro[d] ? etiqueta('Não definido', 'cinza') : ''}
-      </div>
-      <div class="domingo-listas">
-        <div><h4>FOLGAM</h4><div class="chips">${folgam.map(chip).join('') || '<span class="ninguem">ninguém</span>'}</div></div>
-        <div><h4>TRABALHAM</h4><div class="chips">${trabalham.map(chip).join('')}${freelas}${!trabalham.length && !freelas ? '<span class="ninguem">ninguém</span>' : ''}</div></div>
-      </div>
-      <div class="domingo-rodape">${statusFechamento(r)}${r.definida ? botaoFreela(r) : ''}</div>
-    </div>`;
-  }).join('');
-
-  const avisos = validarFolgas(loja, UI.mes);
+  const avisos = agruparAvisos(validarFolgas(loja, UI.mes));
 
   return `
     <section class="cabeca nao-imprime">
@@ -346,8 +325,8 @@ function telaFolgas() {
       </div>
     </section>
     <div class="filtros nao-imprime">${seletorLoja(loja, 'loja')}${seletorMes()}</div>
-    ${avisos.length ? `<div class="avisos nao-imprime"><h3>Conferência das regras</h3><ul>
-      ${avisos.map(a => `<li class="av-${a.nivel}">${esc(a.texto)}</li>`).join('')}</ul></div>`
+    ${avisos.length ? `<details class="avisos nao-imprime"${avisos.length <= 4 ? ' open' : ''}><summary><h3>Conferência das regras · ${avisos.length} aviso(s)</h3> <small>clique para ${avisos.length <= 4 ? 'esconder' : 'ver'}</small></summary><ul>
+      ${avisos.map(a => `<li class="av-${a.nivel}">${esc(a.texto)}</li>`).join('')}</ul></details>`
       : equipe.length ? '<div class="avisos ok nao-imprime">Todas as regras de folga conferidas ✓</div>' : ''}
     <div class="quadro">
       <div class="quadro-titulo">
@@ -358,10 +337,71 @@ function telaFolgas() {
       <h3 class="secao">Folgas fixas</h3>
       <div class="grade-semana" style="--colunas:${dias.length}">${colunas}</div>
       <h3 class="secao">Domingos do mês</h3>
-      <p class="nota nao-imprime">Toque num nome para passar de "trabalha" para "folga" e vice-versa.</p>
-      <div class="domingos">${cartoesDomingo}</div>` :
+      <p class="nota nao-imprime">Clique num quadradinho para trocar entre <b>Folga</b> e <b>Trabalha</b>. Os cinza (férias, licença, folga fixa) não mudam aqui.</p>
+      ${gradeDeDomingos(loja, equipe, domingos, quadro)}` :
       '<div class="vazio">Nenhum funcionário cadastrado nesta loja.</div>'}
     </div>`;
+}
+
+// Junta avisos repetidos da mesma pessoa: "Fulana: trabalha 2 domingos seguidos (3 vezes)"
+function agruparAvisos(avisos) {
+  const grupos = new Map();
+  avisos.forEach(a => {
+    const chave = a.texto.replace(/s*([^)]*).?$/, '');
+    const g = grupos.get(chave) || { ...a, texto: chave, n: 0 };
+    g.n++;
+    if (a.nivel === 'erro') g.nivel = 'erro';
+    grupos.set(chave, g);
+  });
+  return [...grupos.values()]
+    .map(g => ({ nivel: g.nivel, texto: g.n > 1 ? `${g.texto} (${g.n} vezes)` : avisos.find(a => a.texto.startsWith(g.texto)).texto }))
+    .sort((a, b) => (a.nivel === 'erro' ? 0 : 1) - (b.nivel === 'erro' ? 0 : 1));
+}
+
+// Grade de domingos: uma linha por pessoa, um quadradinho por domingo
+function gradeDeDomingos(loja, equipe, domingos, quadro) {
+  const dias = domingos.map(d => ({ d, r: escalaDia(loja, d) }));
+  // Quem está afastado em todos os domingos do mês sai da grade e vai para a caixa de afastados
+  const linhas = equipe.filter(entraNaEscala).filter(f => domingos.some(d => statusDia(f, d) && !afastadoEm(f, d)));
+  const celula = (f, d) => {
+    const st = statusDia(f, d);
+    if (!st) return '<td class="cel-dom"><span class="quad quad-vazio">—</span></td>';
+    if (st.trabalha || st.motivo === 'domingo') {
+      const folga = !st.trabalha;
+      return `<td class="cel-dom"><button class="quad ${folga ? 'quad-folga' : 'quad-trabalha'}" data-acao="troca-domingo" data-dia="${d}" data-id="${f.id}"
+        title="${esc(f.nome)} · ${brCurta(d)}: clique para ${folga ? 'pôr para trabalhar' : 'dar folga'}">${folga ? 'Folga' : 'Trabalha'}</button></td>`;
+    }
+    const rotulo = { 'férias': 'Férias', afastamento: 'Licença', 'folga fixa': 'Folga fixa' }[st.motivo] || st.motivo;
+    return `<td class="cel-dom"><span class="quad quad-fixo" title="${esc(st.motivo === 'afastamento' ? textoAfastamento(f) : st.motivo)}">${rotulo}</span></td>`;
+  };
+  const corpo = linhas.map(f => {
+    const folgas = domingos.filter(d => (statusDia(f, d) || {}).motivo === 'domingo').length;
+    const regra = f.sexo === 'M' ? 'mulher' : f.alternaDomingos ? 'homem · alterna' : 'homem';
+    return `<tr><th class="col-nome">${esc(f.nome)} <small>${regra}</small></th>
+      ${domingos.map(d => celula(f, d)).join('')}
+      <td class="col-total">${folgas}</td></tr>`;
+  }).join('');
+  const cabeca = dias.map(({ d, r }) => `<th class="col-dom"><b>${brCurta(d)}</b>
+      ${r.feriado ? '<span class="tag-dia tag-feriado">Feriado</span>' : r.vespera ? '<span class="tag-dia tag-vespera">Véspera</span>' : ''}
+      ${!quadro[d] ? '<span class="tag-dia">Não definido</span>' : ''}</th>`).join('');
+  const rodape = dias.map(({ r }) => `<td class="cel-rodape${r.alerta ? ' com-alerta' : ''}">${statusFechamento(r)}
+      ${r.marcados.length ? `<div class="chips">${r.marcados.map(chipFreela).join('')}</div>` : ''}${r.definida ? botaoFreela(r) : ''}</td>`).join('');
+  return `
+    <div class="grade-dom-caixa"><table class="grade-dom">
+      <thead><tr><th class="col-nome">Domingo</th>${cabeca}<th class="col-total">Folgas no mês</th></tr></thead>
+      <tbody>${corpo || `<tr><td colspan="${domingos.length + 2}" class="ninguem">Ninguém da escala nesta loja.</td></tr>`}</tbody>
+      <tfoot><tr><th class="col-nome">Equipe do dia</th>${rodape}<td></td></tr></tfoot>
+    </table></div>
+    ${caixaAfastados(loja, domingos)}`;
+}
+
+// Quem está de licença/afastado em algum dia do período, com motivo e previsão de volta
+function caixaAfastados(loja, dias) {
+  const lista = DB.funcionarios.filter(f => f.loja === loja && dias.some(d => ativoEm(f, d) && afastadoEm(f, d)));
+  if (!lista.length) return '';
+  return `<div class="afastados"><h3>Fora da escala temporariamente</h3><div class="afastados-lista">
+    ${lista.map(f => `<div class="afastado"><b>${esc(f.nome)}</b><span>${esc(f.motivoAfastamento || 'Afastado')}</span>
+      <small>${f.retorno ? 'Volta em ' + br(f.retorno) : 'Sem data de volta'}</small></div>`).join('')}</div></div>`;
 }
 
 // ---------- 3. Escala de trabalho ----------
@@ -452,6 +492,7 @@ function escalaPorMes() {
   return `
     <div class="filtros nao-imprime">${seletorLoja(loja, 'loja')}${seletorMes()}</div>
     <h2 class="so-imprime">Escala · ${esc(loja)} · ${nomeMes(UI.mes)}</h2>
+    ${caixaAfastados(loja, diasDoMes(UI.mes))}
     ${!definida ? `<div class="avisos"><ul><li class="av-aviso">A equipe mínima de ${esc(loja)} ainda não foi definida —
       sem ela o site não calcula alertas nem freelancers. <button class="link" data-acao="tela" data-id="ajustes">Definir em Ajustes</button></li></ul></div>` : ''}
     ${definida ? `<div class="resumo">
@@ -478,6 +519,7 @@ function escalaPorDia() {
       <p><b>Cozinha:</b> ${nomesEscalados(r.cozinha)}</p>
       <p><b>Salão:</b> ${nomesEscalados(r.salao)}</p>
       <p><b>Folgam:</b> ${r.folgam.map(x => `${esc(x.f.nome)} <small>(${x.motivo})</small>`).join(', ') || '—'}</p>
+      ${r.afastados.length ? `<p><b>Afastados:</b> ${r.afastados.map(f => `${esc(f.nome)} <small>(${esc(textoAfastamento(f))})</small>`).join(', ')}</p>` : ''}
       <p>${statusFechamento(r)}</p>
       ${r.definida && r.freelas.length ? botaoFreela(r) : ''}
     </div>`;

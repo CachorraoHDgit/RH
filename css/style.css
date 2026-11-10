@@ -540,3 +540,50 @@ button.chip:hover { border-color: var(--red-primary); color: var(--red-primary);
 .nuvem-status.aviso { color: var(--amber); }
 .nuvem-status.erro { color: var(--red-primary); }
 @media print { .nuvem-status { display: none; } }
+
+/* Grade de domingos (Folgas semanais): uma linha por pessoa, um quadradinho por domingo */
+.grade-dom-caixa { overflow-x: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: var(--sombra); }
+.grade-dom { border-collapse: collapse; width: 100%; font-size: 13px; }
+.grade-dom th, .grade-dom td { padding: 6px; border-bottom: 1px solid var(--border-subtle); text-align: center; vertical-align: middle; }
+.grade-dom thead th { background: var(--bg-column); font-size: 12px; color: var(--text-secondary); font-weight: 600; }
+.grade-dom .col-dom b { display: block; font-size: 15px; color: var(--text-primary); }
+.grade-dom .col-nome { text-align: left; white-space: nowrap; position: sticky; left: 0; background: var(--bg-card); z-index: 1; padding-left: 12px; min-width: 170px; }
+.grade-dom thead .col-nome, .grade-dom tfoot .col-nome { background: var(--bg-column); }
+.grade-dom .col-nome small { display: block; font-weight: 400; color: var(--text-muted); font-size: 11px; }
+.grade-dom .col-total { font-weight: 700; width: 70px; }
+.tag-dia { display: inline-block; margin-top: 3px; padding: 1px 6px; border-radius: 99px; font-size: 10px; font-weight: 700; background: var(--border-subtle); color: var(--text-secondary); }
+.tag-feriado { background: var(--red-subtle); color: var(--red-primary); }
+.tag-vespera { background: var(--amber-subtle); color: var(--amber); }
+.quad { display: flex; align-items: center; justify-content: center; width: 100%; min-width: 84px; height: 40px; border-radius: 8px;
+  font: inherit; font-size: 12.5px; font-weight: 700; border: 1px solid transparent; }
+button.quad { cursor: pointer; transition: transform .08s; }
+button.quad:hover { transform: scale(1.04); }
+.quad-folga { background: var(--red-primary); color: #fff; }
+.quad-trabalha { background: var(--blue-subtle); color: var(--blue); border-color: color-mix(in srgb, var(--blue) 25%, transparent); }
+.quad-fixo { background: repeating-linear-gradient(45deg, var(--bg-column), var(--bg-column) 6px, var(--border-subtle) 6px, var(--border-subtle) 12px);
+  color: var(--text-secondary); font-weight: 600; border-color: var(--border-color); }
+.quad-vazio { color: var(--text-muted); font-weight: 400; }
+.grade-dom tfoot td, .grade-dom tfoot th { background: var(--bg-column); font-size: 11.5px; vertical-align: top; border-bottom: 0; }
+.cel-rodape .btn-mini { margin-top: 4px; }
+.cel-rodape.com-alerta { box-shadow: inset 0 -3px 0 var(--red-primary); }
+
+/* Fora da escala temporariamente (licença, INSS...) */
+.afastados { margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--border-color); border-radius: 12px; background: var(--bg-column); }
+.afastados h3 { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; }
+.afastados-lista { display: flex; flex-wrap: wrap; gap: 8px; }
+.afastado { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 10px; background: var(--bg-card); border: 1px solid var(--border-color); font-size: 13px; }
+.afastado span { color: var(--text-secondary); font-size: 12px; }
+.afastado small { color: var(--text-muted); font-size: 11px; }
+
+@media print {
+  .grade-dom-caixa { box-shadow: none; overflow: visible; }
+  .grade-dom .col-nome { position: static; }
+  .quad { height: 28px; min-width: 0; }
+  .quad-folga { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .cel-rodape .btn-mini { display: none; }
+}
+details.avisos summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 8px; }
+details.avisos summary::-webkit-details-marker { display: none; }
+details.avisos summary h3 { margin: 0; }
+details.avisos summary small { color: var(--text-muted); font-size: 11px; }
+details.avisos[open] summary { margin-bottom: 6px; }

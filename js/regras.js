@@ -16,6 +16,15 @@ function vesperaEm(data, loja) {
   return feriadoEm(addDias(data, 1), loja);
 }
 
+// Afastado (licença, INSS...) até a data de volta; sem data, até mudar a situação no cadastro
+function afastadoEm(f, data) {
+  return f.situacao === 'Afastado' && (!f.retorno || data < f.retorno);
+}
+
+function textoAfastamento(f) {
+  return [f.motivoAfastamento || 'Afastado', f.retorno && 'volta ' + brCurta(f.retorno)].filter(Boolean).join(' · ');
+}
+
 function feriasEm(funcId, data) {
   return DB.ferias.find(r => r.funcId === funcId && r.partes.some(p => p.inicio <= data && data <= p.fim));
 }
@@ -35,7 +44,7 @@ function statusDia(f, data) {
     // Substituto que faz o mesmo esquema: a escala segue com o nome do titular
     if (!(ferias.mesmoEsquema && ferias.substituto)) return { trabalha: false, motivo: 'férias' };
     substituto = ferias.substituto;
-  } else if (f.situacao === 'Afastado') {
+  } else if (afastadoEm(f, data)) {
     return { trabalha: false, motivo: 'afastamento' };
   } else if (f.situacao === 'Férias') {
     return { trabalha: false, motivo: 'férias' };
@@ -112,12 +121,14 @@ function escalaDia(loja, data) {
   const vespera = !feriado && vesperaEm(data, loja);
   const cfg = DB.equipeMinima[loja];
 
-  const trabalham = [], folgam = [], fora = [];
+  const trabalham = [], folgam = [], fora = [], afastados = [];
   for (const f of DB.funcionarios) {
     if (f.loja !== loja || !entraNaEscala(f)) continue;
     const st = statusDia(f, data);
     if (!st) continue;
     if (st.trabalha) trabalham.push({ f, nome: f.nome, funcoes: f.funcoes, substituto: st.substituto });
+    // Licença/afastamento não é folga do dia: aparece à parte, uma vez só
+    else if (st.motivo === 'afastamento') afastados.push(f);
     else folgam.push({ f, motivo: st.motivo });
     // Sexta e sábado todos trabalham: quem está fora sem substituto precisa ser coberto
     if (!st.trabalha && (st.motivo === 'férias' || st.motivo === 'afastamento')) fora.push(f);
@@ -128,7 +139,7 @@ function escalaDia(loja, data) {
   let tipo = dow === 0 ? 'domingo' : dow >= 5 ? 'fimsemana' : 'semana';
   if (feriado || vespera) tipo = 'feriado';
 
-  const r = { loja, data, dow, feriado, vespera, tipo, cozinha: [], salao: [], folgam,
+  const r = { loja, data, dow, feriado, vespera, tipo, cozinha: [], salao: [], folgam, afastados,
     definida: cfg.definida, minimo: 0, ideal: 0, freelas: [], marcados, alerta: '', aviso: '' };
 
   let esperado = null;

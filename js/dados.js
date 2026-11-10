@@ -17,6 +17,8 @@ const OUTRAS_FUNCOES = LISTA_CARGOS.filter(c => !FUNCOES_ESCALA.includes(c));
 const TURNOS = ['Dia', 'Noite'];
 const FOLGAS = { seg: 'Segunda', ter: 'Terça', qua: 'Quarta', qui: 'Quinta', sex: 'Sexta', sab: 'Sábado', dom: 'Domingo' };
 const SITUACOES = ['Ativo', 'Férias', 'Afastado', 'Desligado'];
+// Afastado = fora temporariamente (sai da escala até a data de volta)
+const MOTIVOS_AFASTAMENTO = ['Licença maternidade', 'Licença paternidade', 'Atestado / INSS', 'Licença não remunerada', 'Outro'];
 const TIPOS_FERIADO = ['Nacional', 'SC', 'Municipal'];
 
 const CHAVE = 'rh-grupo-chd-v1';
