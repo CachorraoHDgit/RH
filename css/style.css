@@ -110,7 +110,7 @@ button { font-family: inherit; }
 .tema:hover { background: var(--border-subtle); }
 
 .principal { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-main { padding: 0 28px 40px; max-width: 1440px; width: 100%; }
+main { padding: 0 28px 40px; max-width: 1920px; width: 100%; }
 .barra-celular, .fundo-menu { display: none; }
 
 .lembrete {
@@ -232,7 +232,7 @@ input[type=checkbox], input[type=radio] { width: 17px; height: 17px; accent-colo
 .linha-aviso td { background: var(--amber-subtle); }
 
 .escala .col-data { white-space: nowrap; }
-.escala td:nth-child(2) { min-width: 300px; }
+.escala td:nth-child(2) { min-width: 0; }
 .escala td:nth-child(6) { min-width: 190px; }
 .dia-domingo td { background: var(--blue-subtle); }
 .dia-vespera td { background: var(--amber-subtle); }
@@ -601,3 +601,77 @@ details.avisos[open] summary { margin-bottom: 6px; }
 .esc-grupos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px 0; }
 .esc-grupos h4 { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
 @media (max-width: 700px) { .esc-grupos { grid-template-columns: 1fr 1fr; } .lista-nomes li { white-space: normal; } }
+
+/* ---------- PDF no modelo do Grupo CHD ---------- */
+.pdf-topo, .pdf-rodape, .pdf-folgas { display: none; }
+@media print {
+  .pdf-topo, .pdf-rodape { display: flex !important; }
+  .pdf-folgas { display: block !important; }
+  .so-imprime.pdf-topo { margin: 0; font-size: inherit; }
+  .tela-folgas { page: retrato; }
+  .pdf-topo, .pdf-rodape, .pdf-folgas { font-family: 'Poppins', 'Geist', sans-serif; }
+  .pdf-topo { align-items: center; justify-content: space-between; gap: 16px; background: #e81e30; color: #fff;
+    padding: 9mm 10mm; border-bottom: 3mm solid #f2a93b; margin-bottom: 6mm; }
+  .pdf-logo { height: 26mm; width: auto; border-radius: 50%; background: #fff; padding: 1.5mm; }
+  .pdf-topo-texto { text-align: right; }
+  .pdf-topo-texto small { font-size: 9pt; letter-spacing: .12em; font-weight: 500; }
+  .pdf-topo-texto h1 { font-size: 30pt; font-weight: 800; line-height: 1.05; margin: 1mm 0; color: #fff; }
+  .pdf-topo-texto p { font-size: 12pt; color: #f8c46a; margin: 0; }
+  .pdf-rodape { justify-content: space-between; gap: 10mm; background: #1f3a78; color: #fff; padding: 5mm 10mm; margin-top: 6mm;
+    font-size: 8.5pt; }
+  .pdf-rodape span:last-child { color: #f2a93b; text-align: right; }
+
+  .pdf-folgas { background: #fdf6ee; min-height: 297mm; display: flex !important; flex-direction: column; }
+  .pdf-folgas .pdf-topo { margin-bottom: 0; }
+  .pdf-corpo { flex: 1; padding: 6mm 10mm; }
+  .pdf-secao { font-size: 15pt; font-weight: 700; color: #1f3a78; margin: 2mm 0 4mm; padding-bottom: 1.5mm;
+    background: linear-gradient(#e81e30, #e81e30) left bottom / 10mm 1mm no-repeat; }
+  .pdf-fixas { display: grid; grid-template-columns: repeat(var(--colunas), 1fr); gap: 2.5mm; margin-bottom: 7mm; }
+  .pdf-dia { background: #fff; border-radius: 3mm; overflow: hidden; box-shadow: 0 .5mm 1.5mm rgba(0,0,0,.08); min-height: 30mm; display: flex; flex-direction: column; }
+  .pdf-dia h3 { background: #e81e30; color: #fff; text-align: center; font-size: 10pt; font-weight: 700; padding: 2mm 0; margin: 0; }
+  .pdf-dia > div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2mm; gap: .5mm; }
+  .pdf-dia span { font-size: 10.5pt; color: #1f3a78; text-align: center; line-height: 1.25; }
+  .pdf-dia.pdf-fds h3 { background: #f2a93b; }
+  .pdf-dia.pdf-todos > div { background: #1f3a78; }
+  .pdf-dia.pdf-todos span { color: #fff; font-size: 10pt; }
+  .pdf-doms { display: flex; flex-direction: column; gap: 3mm; }
+  .pdf-dom { display: flex; background: #fff; border-radius: 3mm; overflow: hidden; box-shadow: 0 .5mm 1.5mm rgba(0,0,0,.08); break-inside: avoid; min-height: 24mm; }
+  .pdf-data { width: 24mm; flex: none; background: #1f3a78; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .pdf-data b { font-size: 24pt; font-weight: 800; line-height: 1; }
+  .pdf-data small { font-size: 7pt; color: #f2a93b; margin-top: 1mm; letter-spacing: .04em; }
+  .pdf-dom-corpo { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; padding: 3mm 4mm; position: relative; }
+  .pdf-dom-corpo h4 { font-size: 7pt; font-weight: 700; margin: 0 0 1.5mm; letter-spacing: .03em; }
+  .pdf-h-folga { color: #e81e30; }
+  .pdf-h-trab { color: #1f3a78; }
+  .pdf-pills { display: flex; flex-wrap: wrap; gap: 1.5mm; }
+  .pdf-pill { font-size: 9.5pt; padding: .8mm 3mm; border-radius: 10mm; }
+  .pdf-folga { background: #fde4e6; color: #e81e30; }
+  .pdf-trab { background: #e6ebf4; color: #1f3a78; }
+  .pdf-ninguem { color: #94a3b8; font-size: 9pt; }
+  .pdf-tag { position: absolute; top: 2.5mm; right: 3mm; background: #f2a93b; color: #1f3a78; font-size: 6.5pt; font-weight: 700;
+    padding: .6mm 2.5mm; border-radius: 10mm; }
+  .tela-folgas .pdf-rodape { margin-top: 0; }
+}
+@page retrato { size: A4 portrait; margin: 0; }
+
+/* Escala do mês: cabe na largura da tela, sem rolar para o lado */
+.tabela.escala { table-layout: fixed; width: 100%; }
+.tabela.escala th:nth-child(1) { width: 13%; }
+.tabela.escala th:nth-child(2) { width: 24%; }
+.tabela.escala th:nth-child(3) { width: 17%; }
+.tabela.escala th:nth-child(4) { width: 19%; }
+.tabela.escala th:nth-child(5) { width: 8%; }
+.tabela.escala th:nth-child(6) { width: 19%; }
+.escala td:nth-child(6) { min-width: 0; }
+.escala .lista-nomes li { white-space: normal; }
+.escala .col-data { white-space: normal; }
+
+/* Freelancer por dia: um quadrinho por data */
+.dias-freela { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 6px; margin: 6px 0; }
+.dia-freela { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 6px 8px; border-radius: 8px; font-size: 12px; cursor: default; }
+.dia-freela span { display: flex; flex-direction: column; line-height: 1.15; font-weight: 600; }
+.dia-freela small { font-size: 10px; font-weight: 500; opacity: .8; }
+.dia-freela b { font-size: 17px; font-weight: 800; }
+.df-erro { background: var(--red-subtle); color: var(--red-primary); }
+.df-aviso { background: var(--amber-subtle); color: var(--amber); }
+.resumo-lista h3 small { text-transform: none; letter-spacing: 0; font-weight: 400; }

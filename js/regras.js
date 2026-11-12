@@ -94,7 +94,8 @@ function noRodizio(f, mes) {
   const montado = m => domingosDoMes(m).some(d => quadro[d]);
   const ant = mesAnterior(mes);
   const novo = !domingosDoMes(ant).some(d => ativoEm(f, d));
-  if (montado(mes)) return marcado(mes) || (novo && entraNaEscala(f));
+  // Marcado no mês, no anterior ou no seguinte: continua aparecendo mesmo se desmarcarem todas as folgas do mês
+  if (montado(mes)) return marcado(mes) || marcado(ant) || marcado(mesSeguinte(mes)) || (novo && entraNaEscala(f));
   if (montado(ant)) return marcado(ant) || (novo && entraNaEscala(f));
   return entraNaEscala(f);
 }

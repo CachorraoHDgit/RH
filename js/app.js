@@ -20,7 +20,7 @@ const UI = Object.assign({
   busca: '',
   escalaModo: 'mes',
   pontoModo: '7dias',
-  pontoDe: addDias(hoje(), -14),
+  pontoDe: addDias(hoje(), -7),
   pontoAte: addDias(hoje(), -1),
 }, lerUi());
 
@@ -54,6 +54,11 @@ function render() {
   const tela = document.getElementById('tela');
   tela.className = 'tela-' + UI.tela; // a impressão do Ponto sai deitada
   tela.innerHTML = telas[UI.tela]();
+  // Rodapé azul do modelo de PDF (o quadro de folgas já traz o dele)
+  if (UI.tela === 'escala' || UI.tela === 'ponto') {
+    const mes = UI.tela === 'ponto' ? diasDoPonto()[0].slice(0, 7) : UI.mes;
+    tela.insertAdjacentHTML('beforeend', pdfRodape(UI.escalaModo === 'dia' && UI.tela === 'escala' ? '' : UI.loja, mes));
+  }
 }
 
 // Rotina do dia 30: lembrete para atualizar o cadastro antes de fechar o mês seguinte
@@ -347,7 +352,8 @@ function telaFolgas() {
     ${avisos.length ? `<details class="avisos nao-imprime"${avisos.length <= 4 ? ' open' : ''}><summary><h3>Conferência das regras · ${avisos.length} aviso(s)</h3> <small>clique para ${avisos.length <= 4 ? 'esconder' : 'ver'}</small></summary><ul>
       ${avisos.map(a => `<li class="av-${a.nivel}">${esc(a.texto)}</li>`).join('')}</ul></details>`
       : equipe.length ? '<div class="avisos ok nao-imprime">Todas as regras de folga conferidas ✓</div>' : ''}
-    <div class="quadro">
+    ${equipe.length ? pdfFolgas(loja, equipe, domingos) : ''}
+    <div class="quadro nao-imprime">
       <div class="quadro-titulo">
         <img src="img/logo.png" alt="" class="logo-impressao" onerror="this.remove()">
         <div><small>QUADRO DE FOLGAS</small><h2>${esc(loja)} · ${nomeMes(UI.mes)}</h2></div>
@@ -444,6 +450,80 @@ function caixaAfastados(loja, dias) {
 }
 
 
+// ---------- PDF no modelo do Grupo CHD (faixa vermelha, cartões, rodapé azul) ----------
+
+function pdfTopo(rotulo, titulo, subtitulo) {
+  return `<div class="pdf-topo so-imprime">
+    <img src="img/logo.png" alt="" class="pdf-logo" onerror="this.remove()">
+    <div class="pdf-topo-texto"><small>${esc(rotulo)}</small><h1>${esc(titulo)}</h1><p>${esc(subtitulo)}</p></div>
+  </div>`;
+}
+
+function pdfRodape(loja, mes) {
+  const feriados = DB.feriados.filter(h => h.data.startsWith(mes) && (!loja || !h.lojas.length || h.lojas.includes(loja)))
+    .sort((a, b) => a.data.localeCompare(b.data));
+  return `<div class="pdf-rodape so-imprime"><span>Grupo CHD · Cachorrão Hotdog</span>
+    <span>${feriados.length ? 'Feriados: ' + feriados.map(h => `${brCurta(h.data)} ${esc(h.nome)}`).join(' · ') : ''}</span></div>`;
+}
+
+// Nome do quadro: primeiro nome; se repetir na loja, primeiro e segundo
+function nomeQuadro(f, equipe) {
+  const primeiro = f.nome.trim().split(/\s+/)[0];
+  // Nomes compostos comuns ficam com o segundo nome: Maria Julia, Ana Carolina, José Anderson
+  const composto = ['maria', 'ana', 'jose', 'joao'].includes(semAcento(primeiro));
+  const repete = equipe.some(x => x !== f && x.nome.trim().split(/\s+/)[0] === primeiro);
+  return composto || repete ? nomeCurto(f.nome) : primeiro;
+}
+
+function pdfFolgas(loja, equipe, domingos) {
+  const mes = domingos[0].slice(0, 7);
+  const fora = (f, d) => afastadoEm(f, d) || feriasEm(f.id, d);
+  // Mesmo time da grade de domingos: quem está no rodízio e não passa o mês todo fora
+  const time = equipe.filter(f => noRodizio(f, mes) && domingos.some(d => statusDia(f, d) && !fora(f, d)));
+  const nome = f => esc(nomeQuadro(f, time));
+
+  const dias = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+  if (time.some(f => f.folgas.includes('dom'))) dias.push('dom');
+  const fixas = dias.map(d => {
+    const lista = time.filter(f => f.folgas.includes(d));
+    const fds = d === 'sex' || d === 'sab';
+    return `<div class="pdf-dia${lista.length ? '' : ' pdf-todos'}${fds ? ' pdf-fds' : ''}">
+      <h3>${SEMANA_CURTA[SEMANA.indexOf(d)].toUpperCase()}</h3>
+      <div>${lista.length ? lista.map(f => `<span>${nome(f)}</span>`).join('') : '<span>Todos<br>trabalham</span>'}</div></div>`;
+  }).join('');
+
+  const cartoes = domingos.map(d => {
+    const r = escalaDia(loja, d);
+    const folga = [], trabalha = [];
+    time.forEach(f => {
+      const st = statusDia(f, d);
+      if (!st || fora(f, d)) return;
+      if (st.trabalha) trabalha.push(`<span class="pdf-pill pdf-trab">${nome(f)}${st.free ? ' · free' : ''}</span>`);
+      else if (st.motivo === 'domingo') folga.push(`<span class="pdf-pill pdf-folga">${nome(f)}</span>`);
+    });
+    r.marcados.forEach(x => trabalha.push(`<span class="pdf-pill pdf-trab">${esc(x.nome)} · free</span>`));
+    const tag = r.feriado ? 'FERIADO' : r.vespera ? 'VÉSPERA DE FERIADO' : '';
+    return `<div class="pdf-dom">
+      <div class="pdf-data"><b>${d.slice(8)}</b><small>DOM · ${nomeMes(mes).slice(0, 3).toUpperCase()}</small></div>
+      <div class="pdf-dom-corpo">
+        <div><h4 class="pdf-h-folga">FOLGA</h4><div class="pdf-pills">${folga.join('') || '<span class="pdf-ninguem">—</span>'}</div></div>
+        <div><h4 class="pdf-h-trab">TRABALHA</h4><div class="pdf-pills">${trabalha.join('') || '<span class="pdf-ninguem">—</span>'}</div></div>
+        ${tag ? `<span class="pdf-tag">${tag}</span>` : ''}
+      </div></div>`;
+  }).join('');
+
+  return `<div class="pdf-folgas so-imprime">
+    ${pdfTopo('LOJA', loja.toUpperCase(), `Quadro de Folgas · ${nomeMes(mes)}`)}
+    <div class="pdf-corpo">
+      <h2 class="pdf-secao">Folgas fixas</h2>
+      <div class="pdf-fixas" style="--colunas:${dias.length}">${fixas}</div>
+      <h2 class="pdf-secao">Domingos</h2>
+      <div class="pdf-doms">${cartoes}</div>
+    </div>
+    ${pdfRodape(loja, mes)}
+  </div>`;
+}
+
 // ---------- 3. Escala de trabalho ----------
 
 function chipFreela(x) {
@@ -534,18 +614,19 @@ function escalaPorMes() {
 
   return `
     <div class="filtros nao-imprime">${seletorLoja(loja, 'loja')}${seletorMes()}</div>
-    <h2 class="so-imprime">Escala · ${esc(loja)} · ${nomeMes(UI.mes)}</h2>
+    ${pdfTopo('ESCALA DE TRABALHO', loja.toUpperCase(), nomeMes(UI.mes))}
     ${caixaAfastados(loja, diasDoMes(UI.mes))}
     ${!definida ? `<div class="avisos"><ul><li class="av-aviso">A equipe mínima de ${esc(loja)} ainda não foi definida —
       sem ela o site não calcula alertas nem freelancers. <button class="link" data-acao="tela" data-id="ajustes">Definir em Ajustes</button></li></ul></div>` : ''}
     ${definida ? `<div class="resumo">
       <div class="resumo-num ${faltando ? 'erro' : ''}"><strong>${faltando}</strong><span>freelancers ainda faltando</span></div>
       <div class="resumo-num"><strong>${marcados}</strong><span>freelancers já combinados</span></div>
-      <div class="resumo-lista"><h3>Datas que precisam de freelancer</h3>
-        ${comFreela.length ? `<ul>${comFreela.map(r => `<li class="${r.alerta ? 'texto-erro' : ''}"><b>${brCurta(r.data)} ${SEMANA_CURTA[r.dow]}</b> — ${r.freelas.length} · ${contarFuncoes(r.freelas)}</li>`).join('')}</ul>` : '<p>Nenhuma. A escala do mês está fechada.</p>'}
+      <div class="resumo-lista"><h3>Freelancer por dia <small>(número = quantos faltam · passe o mouse para ver as funções)</small></h3>
+        ${comFreela.length ? `<div class="dias-freela">${comFreela.map(r => `<div class="dia-freela ${r.alerta ? 'df-erro' : 'df-aviso'}" title="${contarFuncoes(r.freelas)}"><span>${brCurta(r.data)}<small>${SEMANA_CURTA[r.dow]}</small></span><b>${r.freelas.length}</b></div>`).join('')}</div>
+          <p class="nota">No mês: ${contarFuncoes(comFreela.flatMap(r => r.freelas))}. Vermelho = abaixo do mínimo; amarelo = ideal.</p>` : '<p>Nenhuma. A escala do mês está fechada.</p>'}
       </div></div>` : ''}
     <div class="tabela-caixa"><table class="tabela escala">
-      <thead><tr><th>Data</th><th>Cozinha</th><th>Salão</th><th>Folgam</th><th>Total cozinha</th><th>Freelancer</th></tr></thead>
+      <thead><tr><th>Data</th><th>Cozinha</th><th>Salão</th><th>Folgam</th><th title="Total na cozinha / mínimo">Total</th><th>Freelancer</th></tr></thead>
       <tbody>${linhas}</tbody></table></div>
     ${vermelhos ? `<p class="nota">${vermelhos} dia(s) abaixo do mínimo.</p>` : ''}`;
 }
@@ -726,16 +807,12 @@ function formFerias(reg, funcId) {
 
 // ---------- 5. Ponto ----------
 
+// Dias do relatório de ponto: de um dia até outro (no máximo 62, o que fica guardado do ponto)
 function diasDoPonto() {
-  if (UI.pontoModo === 'mes') return diasDoMes(UI.mes);
-  if (UI.pontoModo === 'periodo') {
-    // De um dia até outro (no máximo 62 dias, o que fica guardado do ponto)
-    const de = UI.pontoDe <= UI.pontoAte ? UI.pontoDe : UI.pontoAte;
-    const ate = UI.pontoDe <= UI.pontoAte ? UI.pontoAte : UI.pontoDe;
-    const n = Math.min(diffDias(de, ate), 61) + 1;
-    return Array.from({ length: n }, (_, i) => addDias(de, i));
-  }
-  return Array.from({ length: 7 }, (_, i) => addDias(UI.dia, i - 6));
+  const de = UI.pontoDe <= UI.pontoAte ? UI.pontoDe : UI.pontoAte;
+  const ate = UI.pontoDe <= UI.pontoAte ? UI.pontoAte : UI.pontoDe;
+  const n = Math.min(diffDias(de, ate), 61) + 1;
+  return Array.from({ length: n }, (_, i) => addDias(de, i));
 }
 
 function celulaPonto(p) {
@@ -766,7 +843,7 @@ function telaPonto() {
   // Sem vínculo: quem bateu ponto no relógio desta loja no período importado
   const semVinculo = pessoasSemVinculo().filter(p => lojaDaPessoa(p) === loja);
   const soma = campo => rel.reduce((s, r) => s + r[campo], 0);
-  const periodo = modo === 'mes' ? nomeMes(UI.mes) : `${br(dias[0])} a ${br(dias[dias.length - 1])}`;
+  const periodo = `${br(dias[0])} a ${br(dias[dias.length - 1])}`;
 
   const grade = `
     <div class="grade-ponto-caixa"><table class="grade-ponto${dias.length > 10 ? ' compacta' : ''}">
@@ -811,21 +888,11 @@ function telaPonto() {
         <button class="btn btn-principal" data-acao="imprimir">Imprimir / PDF</button>
       </div>
     </section>
-    <div class="alternar nao-imprime">
-      <button class="${modo !== 'mes' && modo !== 'periodo' ? 'ativo' : ''}" data-acao="ponto-modo" data-id="7dias">Últimos 7 dias</button>
-      <button class="${modo === 'mes' ? 'ativo' : ''}" data-acao="ponto-modo" data-id="mes">Mês</button>
-      <button class="${modo === 'periodo' ? 'ativo' : ''}" data-acao="ponto-modo" data-id="periodo">Escolher datas</button>
-    </div>
     <div class="filtros nao-imprime">${seletorLoja(loja, 'loja')}
-      ${modo === 'periodo' ? `<label class="campo"><span>De</span><input type="date" value="${UI.pontoDe}" data-muda="ponto-de"></label>
-        <label class="campo"><span>Até</span><input type="date" value="${UI.pontoAte}" data-muda="ponto-ate"></label>` : modo === 'mes' ? seletorMes() : `<label class="campo"><span>Até o dia</span>
-        <div class="mes-nav">
-          <button class="btn btn-icone" data-acao="dia" data-n="-7" aria-label="Semana anterior">‹</button>
-          <input type="date" value="${UI.dia}" data-muda="dia">
-          <button class="btn btn-icone" data-acao="dia" data-n="7" aria-label="Próxima semana">›</button>
-        </div></label>`}
+      <label class="campo"><span>De</span><input type="date" value="${UI.pontoDe}" data-muda="ponto-de"></label>
+      <label class="campo"><span>Até</span><input type="date" value="${UI.pontoAte}" data-muda="ponto-ate"></label>
     </div>
-    <h2 class="so-imprime">Ponto · ${esc(loja)} · ${periodo}</h2>
+    ${pdfTopo('PONTO · PONTUALIDADE E HORA EXTRA', loja.toUpperCase(), periodo)}
     ${!temBatidas ? `<div class="avisos"><ul><li class="av-aviso">Ainda não há batidas de ${esc(loja)} neste período.
       O ponto chega sozinho todo dia de manhã; para buscar agora, clique em <b>Atualizar do ponto</b>.</li></ul></div>` : ''}
     ${semHorario.length ? `<div class="avisos"><ul><li class="av-aviso">Sem horário de entrada no cadastro (fica sem cor):
