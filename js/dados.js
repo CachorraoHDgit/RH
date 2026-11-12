@@ -16,7 +16,7 @@ const OUTRAS_FUNCOES = LISTA_CARGOS.filter(c => !FUNCOES_ESCALA.includes(c));
 
 const TURNOS = ['Dia', 'Noite'];
 const FOLGAS = { seg: 'Segunda', ter: 'Terça', qua: 'Quarta', qui: 'Quinta', sex: 'Sexta', sab: 'Sábado', dom: 'Domingo' };
-const SITUACOES = ['Ativo', 'Férias', 'Afastado', 'Desligado'];
+const SITUACOES = ['Ativo', 'Férias', 'Afastado', 'Aviso prévio', 'Desligado'];
 // Afastado = fora temporariamente (sai da escala até a data de volta)
 const MOTIVOS_AFASTAMENTO = ['Licença maternidade', 'Licença paternidade', 'Atestado / INSS', 'Licença não remunerada', 'Outro'];
 const TIPOS_FERIADO = ['Nacional', 'SC', 'Municipal'];
@@ -47,6 +47,8 @@ function dadosIniciais() {
     funcionarios: [amaral],
     // domingos[loja][data] = ids de quem folga naquele domingo
     domingos: {},
+    // domingosFree[loja][data] = ids de quem está de folga mas trabalha como freelancer naquele domingo
+    domingosFree: {},
     // freelancers já combinados para um dia: { id, loja, data, nome, funcao }
     freelas: [],
     feriados: [

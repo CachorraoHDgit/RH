@@ -589,3 +589,15 @@ details.avisos summary small { color: var(--text-muted); font-size: 11px; }
 details.avisos[open] summary { margin-bottom: 6px; }
 .grade-dom .grade-sep td { text-align: left; font-size: 11.5px; color: var(--text-muted); background: var(--bg-column); padding: 8px 12px; }
 @media print { .grade-dom .grade-sep, .grade-dom .grade-sep ~ tr { display: none; } }
+
+/* Domingo trabalhado como freelancer (está de folga) */
+.quad-free { background: var(--amber-subtle); color: var(--amber); border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
+
+/* Escala: um nome embaixo do outro */
+.lista-nomes { list-style: none; margin: 0; padding: 0; }
+.lista-nomes li { padding: 2px 0; line-height: 1.3; white-space: nowrap; }
+.lista-nomes li small { color: var(--text-muted); font-size: 11px; margin-left: 4px; }
+.lista-nomes li.nome-freela { color: var(--amber); }
+.esc-grupos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px 0; }
+.esc-grupos h4 { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+@media (max-width: 700px) { .esc-grupos { grid-template-columns: 1fr 1fr; } .lista-nomes li { white-space: normal; } }

@@ -63,7 +63,8 @@ function pontoDia(f, data) {
 // Funcionários da loja com o resultado de cada dia do período e os totais
 function relatorioPonto(loja, dias) {
   return DB.funcionarios
-    .filter(f => f.loja === loja && dias.some(d => ativoEm(f, d)))
+    // Quem está afastado ou de férias o período inteiro não aparece no relatório
+    .filter(f => f.loja === loja && dias.some(d => ativoEm(f, d) && !afastadoEm(f, d) && !feriasEm(f.id, d)))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
     .map(f => {
       const r = { f, dias: {}, verde: 0, amarelo: 0, vermelho: 0, trabalhado: 0, extra: 0, atrasoTotal: 0, extraSemana: Array(7).fill(0) };

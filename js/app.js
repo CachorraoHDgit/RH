@@ -20,6 +20,8 @@ const UI = Object.assign({
   busca: '',
   escalaModo: 'mes',
   pontoModo: '7dias',
+  pontoDe: addDias(hoje(), -14),
+  pontoAte: addDias(hoje(), -1),
 }, lerUi());
 
 function lerUi() {
@@ -87,6 +89,7 @@ function seletorMes() {
 
 function situacaoAtual(f) {
   if (f.situacao === 'Afastado' && !afastadoEm(f, hoje())) return 'Ativo';
+  if (f.situacao === 'Aviso prévio' && f.avisoFim && f.avisoFim < hoje()) return 'Desligado';
   if (f.situacao === 'Ativo' && feriasEm(f.id, hoje())) return 'Férias';
   return f.situacao;
 }
@@ -105,7 +108,7 @@ function telaFuncionarios() {
 
   const linhas = lista.map(f => {
     const s = situacaoAtual(f);
-    const tipoSit = { Ativo: 'ok', Férias: 'aviso', Afastado: 'cinza', Desligado: 'erro' }[s];
+    const tipoSit = { Ativo: 'ok', Férias: 'aviso', Afastado: 'cinza', 'Aviso prévio': 'aviso', Desligado: 'erro' }[s];
     return `<tr>
       <td data-label="Nome"><strong>${esc(f.nome)}</strong>${f.obs ? `<br><small>${esc(f.obs)}</small>` : ''}</td>
       <td data-label="Loja">${esc(f.loja)}</td>
@@ -115,7 +118,7 @@ function telaFuncionarios() {
       <td data-label="Turno">${esc(f.turno) || '—'}${f.entrada ? `<br><small>${f.entrada}${f.horaSaida ? ' às ' + f.horaSaida : ''}</small>` : ''}</td>
       <td data-label="Folga fixa">${f.folgas.length ? f.folgas.map(d => FOLGAS[d]).join(', ') : etiqueta('Definir', 'erro')}</td>
       <td data-label="Início">${br(f.inicio) || '—'}</td>
-      <td data-label="Situação">${etiqueta(s, tipoSit)}${f.situacao === 'Desligado' && f.saida ? `<small> em ${br(f.saida)}</small>` : ''}${s === 'Afastado' ? `<br><small>${esc(textoAfastamento(f))}</small>` : ''}</td>
+      <td data-label="Situação">${etiqueta(s, tipoSit)}${f.situacao === 'Desligado' && f.saida ? `<small> em ${br(f.saida)}</small>` : ''}${s === 'Afastado' ? `<br><small>${esc(textoAfastamento(f))}</small>` : ''}${s === 'Aviso prévio' ? `<br><small>${[f.avisoInicio && 'desde ' + br(f.avisoInicio), f.avisoFim && 'último dia ' + br(f.avisoFim)].filter(Boolean).join(' · ')}</small>` : ''}</td>
       <td class="acoes">
         <button class="btn btn-claro" data-acao="editar-func" data-id="${f.id}">Editar</button>
         ${f.situacao !== 'Desligado' ? `<button class="btn btn-perigo" data-acao="desligar" data-id="${f.id}">Desligar</button>` : ''}
@@ -230,6 +233,11 @@ function formFuncionario(f, inicial) {
     </div>
     <label class="campo" id="linha-saida" ${f.situacao === 'Desligado' ? '' : 'hidden'}><span>Data de saída</span>
       <input type="date" name="saida" value="${f.saida}"></label>
+    <div class="grade-2" id="linha-aviso" ${f.situacao === 'Aviso prévio' ? '' : 'hidden'}>
+      <label class="campo"><span>Início do aviso</span><input type="date" name="avisoInicio" value="${f.avisoInicio || ''}"></label>
+      <label class="campo"><span>Último dia de trabalho</span><input type="date" name="avisoFim" value="${f.avisoFim || ''}"
+        title="Depois desse dia a pessoa sai sozinha da escala e do ponto."></label>
+    </div>
     <div class="grade-2" id="linha-afastamento" ${f.situacao === 'Afastado' ? '' : 'hidden'}>
       <label class="campo"><span>Motivo</span><select name="motivoAfastamento">${opcoes(MOTIVOS_AFASTAMENTO, f.motivoAfastamento || MOTIVOS_AFASTAMENTO[0])}</select></label>
       <label class="campo"><span>Volta em <small>(previsão)</small></span><input type="date" name="retorno" value="${f.retorno || ''}"
@@ -260,6 +268,8 @@ function formFuncionario(f, inicial) {
       saida: dados.get('situacao') === 'Desligado' ? dados.get('saida') : '',
       motivoAfastamento: dados.get('situacao') === 'Afastado' ? dados.get('motivoAfastamento') : '',
       retorno: dados.get('situacao') === 'Afastado' ? dados.get('retorno') : '',
+      avisoInicio: dados.get('situacao') === 'Aviso prévio' ? dados.get('avisoInicio') : '',
+      avisoFim: dados.get('situacao') === 'Aviso prévio' ? dados.get('avisoFim') : '',
       obs: dados.get('obs').trim(),
     };
     if (novo) DB.funcionarios.push({ id: novoId(), ...reg });
@@ -282,6 +292,7 @@ function formFuncionario(f, inicial) {
       if (e.target.name === 'situacao') {
         form.querySelector('#linha-saida').hidden = e.target.value !== 'Desligado';
         form.querySelector('#linha-afastamento').hidden = e.target.value !== 'Afastado';
+        form.querySelector('#linha-aviso').hidden = e.target.value !== 'Aviso prévio';
       }
       // Sem funções marcadas ainda: começa pela função do próprio cargo
       if (e.target.name === 'cargo' && !funcoes.length && e.target.value) {
@@ -315,7 +326,7 @@ function telaFolgas() {
   if (equipe.some(f => f.folgas.includes('dom'))) dias.push('dom');
   const colunas = dias.map(d => {
     // Quem está de licença o mês todo não aparece nas folgas fixas
-    const nomes = equipe.filter(f => f.folgas.includes(d) && domingos.some(x => !afastadoEm(f, x))).map(f => `<li>${esc(f.nome)}</li>`).join('');
+    const nomes = equipe.filter(f => f.folgas.includes(d) && domingos.some(x => !afastadoEm(f, x) && !feriasEm(f.id, x))).map(f => `<li title="${esc(f.nome)}">${esc(nomeCurto(f.nome))}</li>`).join('');
     const fds = d === 'sex' || d === 'sab' || d === 'dom';
     const vazio = fds ? '<p class="todos">Todos trabalham</p>' : '<p class="ninguem">—</p>';
     return `<div class="dia-col${fds ? ' fds' : ''}"><h3>${SEMANA_CURTA[SEMANA.indexOf(d)]}</h3>${nomes ? `<ul>${nomes}</ul>` : vazio}</div>`;
@@ -345,7 +356,7 @@ function telaFolgas() {
       <h3 class="secao">Folgas fixas</h3>
       <div class="grade-semana" style="--colunas:${dias.length}">${colunas}</div>
       <h3 class="secao">Domingos do mês</h3>
-      <p class="nota nao-imprime">Clique num quadradinho para trocar entre <b>Folga</b> e <b>Trabalha</b>. Os cinza (férias, licença, folga fixa) não mudam aqui.</p>
+      <p class="nota nao-imprime">Clique no quadradinho para trocar: <b>Trabalha</b> (CLT) → <b>Folga</b> → <b>Free</b> (está de folga, mas vem como freelancer) → <b>Trabalha</b>. Quem está de férias ou licença fica na caixa de baixo.</p>
       ${gradeDeDomingos(loja, equipe, domingos, quadro)}` :
       '<div class="vazio">Nenhum funcionário cadastrado nesta loja.</div>'}
     </div>`;
@@ -369,27 +380,31 @@ function agruparAvisos(avisos) {
 // Grade de domingos: uma linha por pessoa, um quadradinho por domingo
 function gradeDeDomingos(loja, equipe, domingos, quadro) {
   const dias = domingos.map(d => ({ d, r: escalaDia(loja, d) }));
-  // Quem está afastado em todos os domingos do mês sai da grade e vai para a caixa de afastados
   const mes = domingos[0].slice(0, 7);
-  const presentes = equipe.filter(f => domingos.some(d => statusDia(f, d) && !afastadoEm(f, d)));
+  // Quem está de férias ou licença em todos os domingos do mês sai da grade e vai para a caixa de baixo
+  const fora = (f, d) => afastadoEm(f, d) || feriasEm(f.id, d);
+  const presentes = equipe.filter(f => domingos.some(d => statusDia(f, d) && !fora(f, d)));
   const linhas = presentes.filter(f => noRodizio(f, mes));
   // Da escala, mas fora do quadro de domingo (ex.: turno do dia): ficam numa parte separada, ainda clicáveis
   const outros = presentes.filter(f => !noRodizio(f, mes) && entraNaEscala(f));
   const celula = (f, d) => {
     const st = statusDia(f, d);
     if (!st) return '<td class="cel-dom"><span class="quad quad-vazio">—</span></td>';
+    if (feriasEm(f.id, d)) return '<td class="cel-dom"><span class="quad quad-fixo">Férias</span></td>';
     if (st.trabalha || st.motivo === 'domingo') {
-      const folga = !st.trabalha;
-      return `<td class="cel-dom"><button class="quad ${folga ? 'quad-folga' : 'quad-trabalha'}" data-acao="troca-domingo" data-dia="${d}" data-id="${f.id}"
-        title="${esc(f.nome)} · ${brCurta(d)}: clique para ${folga ? 'pôr para trabalhar' : 'dar folga'}">${folga ? 'Folga' : 'Trabalha'}</button></td>`;
+      const tipo = st.free ? 'free' : st.trabalha ? 'trabalha' : 'folga';
+      const proximo = { trabalha: 'dar folga', folga: 'marcar como freelancer', free: 'voltar para trabalha (CLT)' }[tipo];
+      const rotulo = { trabalha: 'Trabalha', folga: 'Folga', free: 'Free' }[tipo];
+      return `<td class="cel-dom"><button class="quad quad-${tipo}" data-acao="troca-domingo" data-dia="${d}" data-id="${f.id}"
+        title="${esc(f.nome)} · ${brCurta(d)}: clique para ${proximo}">${rotulo}</button></td>`;
     }
     const rotulo = { 'férias': 'Férias', afastamento: 'Licença', 'folga fixa': 'Folga fixa' }[st.motivo] || st.motivo;
     return `<td class="cel-dom"><span class="quad quad-fixo" title="${esc(st.motivo === 'afastamento' ? textoAfastamento(f) : st.motivo)}">${rotulo}</span></td>`;
   };
   const linha = f => {
-    const folgas = domingos.filter(d => (statusDia(f, d) || {}).motivo === 'domingo').length;
+    const folgas = domingos.filter(d => folgaDomingo(f.loja, d, f.id) && statusDia(f, d)).length;
     const regra = f.sexo === 'M' ? 'mulher' : f.alternaDomingos ? 'homem · alterna' : 'homem';
-    return `<tr><th class="col-nome">${esc(f.nome)} <small>${regra}</small></th>
+    return `<tr><th class="col-nome" title="${esc(f.nome)}">${esc(nomeCurto(f.nome))} <small>${regra}</small></th>
       ${domingos.map(d => celula(f, d)).join('')}
       <td class="col-total">${folgas}</td></tr>`;
   };
@@ -410,14 +425,24 @@ function gradeDeDomingos(loja, equipe, domingos, quadro) {
     ${caixaAfastados(loja, domingos)}`;
 }
 
-// Quem está de licença/afastado em algum dia do período, com motivo e previsão de volta
+// Quem está de licença, afastado ou de férias em algum dia do período, com as datas
 function caixaAfastados(loja, dias) {
-  const lista = DB.funcionarios.filter(f => f.loja === loja && dias.some(d => ativoEm(f, d) && afastadoEm(f, d)));
-  if (!lista.length) return '';
-  return `<div class="afastados"><h3>Fora da escala temporariamente</h3><div class="afastados-lista">
-    ${lista.map(f => `<div class="afastado"><b>${esc(f.nome)}</b><span>${esc(f.motivoAfastamento || 'Afastado')}</span>
-      <small>${f.retorno ? 'Volta em ' + br(f.retorno) : 'Sem data de volta'}</small></div>`).join('')}</div></div>`;
+  const doPeriodo = DB.funcionarios.filter(f => f.loja === loja && dias.some(d => ativoEm(f, d)));
+  const itens = [];
+  doPeriodo.filter(f => dias.some(d => afastadoEm(f, d))).forEach(f => itens.push({ f,
+    motivo: f.motivoAfastamento || 'Afastado', quando: f.retorno ? 'Volta em ' + br(f.retorno) : 'Sem data de volta' }));
+  doPeriodo.forEach(f => {
+    const reg = DB.ferias.find(r => r.funcId === f.id && r.partes.some(p => dias.some(d => p.inicio <= d && d <= p.fim)));
+    if (!reg) return;
+    const parte = reg.partes.find(p => dias.some(d => p.inicio <= d && d <= p.fim));
+    itens.push({ f, motivo: 'Férias', quando: `${brCurta(parte.inicio)} a ${brCurta(parte.fim)}${reg.substituto ? ' · sub.: ' + reg.substituto : ''}` });
+  });
+  if (!itens.length) return '';
+  return `<div class="afastados"><h3>Fora da escala: férias, licença e afastamento</h3><div class="afastados-lista">
+    ${itens.map(x => `<div class="afastado"><b title="${esc(x.f.nome)}">${esc(nomeCurto(x.f.nome))}</b><span>${esc(x.motivo)}</span>
+      <small>${esc(x.quando)}</small></div>`).join('')}</div></div>`;
 }
+
 
 // ---------- 3. Escala de trabalho ----------
 
@@ -447,15 +472,18 @@ function statusFechamento(r) {
 }
 
 function linhaFolgam(r) {
-  return r.folgam.map(x => `${esc(x.f.nome)} <small>(${x.motivo})</small>`).join('<br>') || '—';
+  if (!r.folgam.length) return '—';
+  return `<ul class="lista-nomes">${r.folgam.map(x => `<li title="${esc(x.f.nome)}">${esc(nomeCurto(x.f.nome))} <small>${x.motivo}</small></li>`).join('')}</ul>`;
 }
 
+// Um nome embaixo do outro: "Guilherme Crispim  montador"
 function nomesEscalados(lista) {
-  return lista.map(x => {
-    if (x.freela) return `<span class="nome-freela">${esc(x.nome)}</span> <small>(freela · ${esc(x.funcao)})</small>`;
-    const extra = [x.funcao, x.substituto && `sub.: ${x.substituto}`].filter(Boolean).map(esc).join(' · ');
-    return `${esc(x.nome)}${extra ? ` <small>(${extra})</small>` : ''}`;
-  }).join(', ') || '—';
+  if (!lista.length) return '<span class="ninguem">ninguém</span>';
+  return `<ul class="lista-nomes">${lista.map(x => {
+    if (x.freela) return `<li class="nome-freela">${esc(x.nome)} <small>freelancer · ${esc(x.funcao)}</small></li>`;
+    const extra = [x.funcao, x.free && 'free', x.substituto && `sub.: ${x.substituto}`].filter(Boolean).map(esc).join(' · ');
+    return `<li title="${esc(x.nome)}"${x.free ? ' class="nome-freela"' : ''}>${esc(nomeCurto(x.nome))} <small>${extra}</small></li>`;
+  }).join('')}</ul>`;
 }
 
 function classeDia(r) {
@@ -493,9 +521,9 @@ function escalaPorMes() {
 
   const linhas = dias.map(r => `<tr class="${classeDia(r)}">
       <td data-label="Data" class="col-data"><strong>${brCurta(r.data)}</strong> ${SEMANA_CURTA[r.dow]} ${etiquetasDia(r)}</td>
-      <td data-label="Trabalham"><div><b>Cozinha:</b> ${nomesEscalados(r.cozinha)}</div><div><b>Salão:</b> ${nomesEscalados(r.salao)}</div></td>
+      <td data-label="Cozinha">${nomesEscalados(r.cozinha)}</td>
+      <td data-label="Salão">${nomesEscalados(r.salao)}</td>
       <td data-label="Folgam">${linhaFolgam(r)}</td>
-      <td data-label="Salão">${r.salao.map(x => esc(x.nome)).join(', ') || '<span class="texto-erro">ninguém</span>'}</td>
       <td data-label="Total cozinha" class="num">${r.cozinha.length}${r.definida ? `<small> / ${r.minimo}</small>` : ''}</td>
       <td data-label="Freelancer">
         <div>${statusFechamento(r)}</div>
@@ -517,7 +545,7 @@ function escalaPorMes() {
         ${comFreela.length ? `<ul>${comFreela.map(r => `<li class="${r.alerta ? 'texto-erro' : ''}"><b>${brCurta(r.data)} ${SEMANA_CURTA[r.dow]}</b> — ${r.freelas.length} · ${contarFuncoes(r.freelas)}</li>`).join('')}</ul>` : '<p>Nenhuma. A escala do mês está fechada.</p>'}
       </div></div>` : ''}
     <div class="tabela-caixa"><table class="tabela escala">
-      <thead><tr><th>Data</th><th>Trabalham</th><th>Folgam</th><th>Salão</th><th>Total cozinha</th><th>Freelancer</th></tr></thead>
+      <thead><tr><th>Data</th><th>Cozinha</th><th>Salão</th><th>Folgam</th><th>Total cozinha</th><th>Freelancer</th></tr></thead>
       <tbody>${linhas}</tbody></table></div>
     ${vermelhos ? `<p class="nota">${vermelhos} dia(s) abaixo do mínimo.</p>` : ''}`;
 }
@@ -531,10 +559,12 @@ function escalaPorDia() {
     }
     return `<div class="cartao-loja ${r.alerta ? 'dia-alerta' : ''}">
       <div class="domingo-topo"><h3>${esc(loja)}</h3>${etiquetasDia(r)}</div>
-      <p><b>Cozinha:</b> ${nomesEscalados(r.cozinha)}</p>
-      <p><b>Salão:</b> ${nomesEscalados(r.salao)}</p>
-      <p><b>Folgam:</b> ${r.folgam.map(x => `${esc(x.f.nome)} <small>(${x.motivo})</small>`).join(', ') || '—'}</p>
-      ${r.afastados.length ? `<p><b>Afastados:</b> ${r.afastados.map(f => `${esc(f.nome)} <small>(${esc(textoAfastamento(f))})</small>`).join(', ')}</p>` : ''}
+      <div class="esc-grupos">
+        <div><h4>Cozinha</h4>${nomesEscalados(r.cozinha)}</div>
+        <div><h4>Salão</h4>${nomesEscalados(r.salao)}</div>
+        <div><h4>Folgam</h4>${linhaFolgam(r)}</div>
+      </div>
+      ${r.afastados.length ? `<p class="nota"><b>Afastados:</b> ${r.afastados.map(f => `${esc(nomeCurto(f.nome))} <small>(${esc(textoAfastamento(f))})</small>`).join(', ')}</p>` : ''}
       <p>${statusFechamento(r)}</p>
       ${r.definida && r.freelas.length ? botaoFreela(r) : ''}
     </div>`;
@@ -698,6 +728,13 @@ function formFerias(reg, funcId) {
 
 function diasDoPonto() {
   if (UI.pontoModo === 'mes') return diasDoMes(UI.mes);
+  if (UI.pontoModo === 'periodo') {
+    // De um dia até outro (no máximo 62 dias, o que fica guardado do ponto)
+    const de = UI.pontoDe <= UI.pontoAte ? UI.pontoDe : UI.pontoAte;
+    const ate = UI.pontoDe <= UI.pontoAte ? UI.pontoAte : UI.pontoDe;
+    const n = Math.min(diffDias(de, ate), 61) + 1;
+    return Array.from({ length: n }, (_, i) => addDias(de, i));
+  }
   return Array.from({ length: 7 }, (_, i) => addDias(UI.dia, i - 6));
 }
 
@@ -729,15 +766,15 @@ function telaPonto() {
   // Sem vínculo: quem bateu ponto no relógio desta loja no período importado
   const semVinculo = pessoasSemVinculo().filter(p => lojaDaPessoa(p) === loja);
   const soma = campo => rel.reduce((s, r) => s + r[campo], 0);
-  const periodo = modo === 'mes' ? nomeMes(UI.mes) : `${br(dias[0])} a ${br(dias[6])}`;
+  const periodo = modo === 'mes' ? nomeMes(UI.mes) : `${br(dias[0])} a ${br(dias[dias.length - 1])}`;
 
   const grade = `
-    <div class="grade-ponto-caixa"><table class="grade-ponto${modo === 'mes' ? ' compacta' : ''}">
+    <div class="grade-ponto-caixa"><table class="grade-ponto${dias.length > 10 ? ' compacta' : ''}">
       <thead><tr><th class="pt-nome">Funcionário</th>
         ${dias.map(d => `<th class="${diaSemana(d) === 0 ? 'pt-dom' : ''}">${SEMANA_CURTA[diaSemana(d)]}<br>${d.slice(8)}</th>`).join('')}
         <th>Atrasos</th><th>Horas</th><th>Hora extra</th></tr></thead>
       <tbody>${rel.map(r => `<tr>
-        <td class="pt-nome"><strong>${esc(r.f.nome)}</strong><small>${r.f.entrada ? `${r.f.entrada}${r.f.horaSaida ? ' às ' + r.f.horaSaida : ''}` : 'sem horário'}</small></td>
+        <td class="pt-nome" title="${esc(r.f.nome)}"><strong>${esc(nomeCurto(r.f.nome))}</strong><small>${r.f.entrada ? `${r.f.entrada}${r.f.horaSaida ? ' às ' + r.f.horaSaida : ''}` : 'sem horário'}</small></td>
         ${dias.map(d => celulaPonto(r.dias[d])).join('')}
         <td class="pt-total">${r.amarelo || r.vermelho ? `<span class="texto-aviso">${r.amarelo}</span> · <span class="texto-erro">${r.vermelho}</span>` : '<span class="texto-ok">0</span>'}</td>
         <td class="pt-total">${horas(r.trabalhado)}</td>
@@ -754,7 +791,7 @@ function telaPonto() {
       <thead><tr><th>Funcionário</th>${ordem.map(dow => `<th>${SEMANA_CURTA[dow]}</th>`).join('')}<th>Total</th></tr></thead>
       <tbody>${comExtra.map(r => {
         const maior = Math.max(...r.extraSemana);
-        return `<tr><td data-label="Funcionário"><strong>${esc(r.f.nome)}</strong></td>
+        return `<tr><td data-label="Funcionário" title="${esc(r.f.nome)}"><strong>${esc(nomeCurto(r.f.nome))}</strong></td>
           ${ordem.map(dow => {
             const v = r.extraSemana[dow];
             return `<td data-label="${SEMANA_CURTA[dow]}" class="${v ? (v === maior ? 'pt-pico' : 'pt-extra') : ''}">${v ? horas(v) : '—'}</td>`;
@@ -775,11 +812,13 @@ function telaPonto() {
       </div>
     </section>
     <div class="alternar nao-imprime">
-      <button class="${modo !== 'mes' ? 'ativo' : ''}" data-acao="ponto-modo" data-id="7dias">Últimos 7 dias</button>
+      <button class="${modo !== 'mes' && modo !== 'periodo' ? 'ativo' : ''}" data-acao="ponto-modo" data-id="7dias">Últimos 7 dias</button>
       <button class="${modo === 'mes' ? 'ativo' : ''}" data-acao="ponto-modo" data-id="mes">Mês</button>
+      <button class="${modo === 'periodo' ? 'ativo' : ''}" data-acao="ponto-modo" data-id="periodo">Escolher datas</button>
     </div>
     <div class="filtros nao-imprime">${seletorLoja(loja, 'loja')}
-      ${modo === 'mes' ? seletorMes() : `<label class="campo"><span>Até o dia</span>
+      ${modo === 'periodo' ? `<label class="campo"><span>De</span><input type="date" value="${UI.pontoDe}" data-muda="ponto-de"></label>
+        <label class="campo"><span>Até</span><input type="date" value="${UI.pontoAte}" data-muda="ponto-ate"></label>` : modo === 'mes' ? seletorMes() : `<label class="campo"><span>Até o dia</span>
         <div class="mes-nav">
           <button class="btn btn-icone" data-acao="dia" data-n="-7" aria-label="Semana anterior">‹</button>
           <input type="date" value="${UI.dia}" data-muda="dia">
@@ -788,7 +827,7 @@ function telaPonto() {
     </div>
     <h2 class="so-imprime">Ponto · ${esc(loja)} · ${periodo}</h2>
     ${!temBatidas ? `<div class="avisos"><ul><li class="av-aviso">Ainda não há batidas de ${esc(loja)} neste período.
-      Clique em <b>Importar batidas</b> e escolha o arquivo do período na pasta <b>Documentos › RH › dados-ponto</b>.</li></ul></div>` : ''}
+      O ponto chega sozinho todo dia de manhã; para buscar agora, clique em <b>Atualizar do ponto</b>.</li></ul></div>` : ''}
     ${semHorario.length ? `<div class="avisos"><ul><li class="av-aviso">Sem horário de entrada no cadastro (fica sem cor):
       ${semHorario.map(r => esc(r.f.nome)).join(', ')}.</li></ul></div>` : ''}
     <div class="resumo resumo-ponto">
@@ -1102,6 +1141,8 @@ document.addEventListener('change', e => {
   if (muda === 'loja') UI.loja = el.value;
   if (muda === 'mes') UI.mes = el.value;
   if (muda === 'dia') UI.dia = el.value;
+  if (muda === 'ponto-de' && el.value) UI.pontoDe = el.value;
+  if (muda === 'ponto-ate' && el.value) UI.pontoAte = el.value;
   if (muda === 'filtro-loja') UI.filtroLoja = el.value;
   if (muda === 'filtro-situacao') UI.filtroSituacao = el.value;
   render();

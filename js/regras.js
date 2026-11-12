@@ -4,8 +4,23 @@
 
 function ativoEm(f, data) {
   if (f.inicio && data < f.inicio) return false;
+  // Aviso prévio: trabalha normalmente até o último dia
+  if (f.situacao === 'Aviso prévio' && f.avisoFim && data > f.avisoFim) return false;
   if (f.situacao === 'Desligado' && (!f.saida || data > f.saida)) return false;
   return true;
+}
+
+// "Maria Eduarda dos Santos" → "Maria Eduarda"; "Iara da Silva e Silva" → "Iara Silva"
+const PARTICULAS = ['da', 'de', 'do', 'das', 'dos', 'e'];
+function nomeCurto(nome) {
+  const partes = String(nome || '').trim().split(/\s+/);
+  const segundo = partes.slice(1).find(p => !PARTICULAS.includes(p.toLowerCase()));
+  return segundo ? partes[0] + ' ' + segundo : partes[0];
+}
+
+function freeDomingo(loja, data, funcId) {
+  const lista = ((DB.domingosFree || {})[loja] || {})[data];
+  return !!lista && lista.includes(funcId);
 }
 
 function feriadoEm(data, loja) {
@@ -51,7 +66,11 @@ function statusDia(f, data) {
   }
   const dow = diaSemana(data);
   if (f.folgas.includes(SEMANA[dow])) return { trabalha: false, motivo: 'folga fixa' };
-  if (dow === 0 && folgaDomingo(f.loja, data, f.id)) return { trabalha: false, motivo: 'domingo' };
+  if (dow === 0 && folgaDomingo(f.loja, data, f.id)) {
+    // Folga de domingo, mas vem trabalhar como freelancer
+    if (freeDomingo(f.loja, data, f.id)) return { trabalha: true, substituto, free: true };
+    return { trabalha: false, motivo: 'domingo' };
+  }
   return { trabalha: true, substituto };
 }
 
@@ -139,7 +158,7 @@ function escalaDia(loja, data) {
     if (f.loja !== loja || !entraNaEscala(f)) continue;
     const st = statusDia(f, data);
     if (!st) continue;
-    if (st.trabalha) trabalham.push({ f, nome: f.nome, funcoes: f.funcoes, substituto: st.substituto });
+    if (st.trabalha) trabalham.push({ f, nome: f.nome, funcoes: f.funcoes, substituto: st.substituto, free: st.free });
     // Licença/afastamento não é folga do dia: aparece à parte, uma vez só
     else if (st.motivo === 'afastamento') afastados.push(f);
     else folgam.push({ f, motivo: st.motivo });
@@ -342,9 +361,17 @@ function preencherProximosMeses(lojas, desde, quantos) {
 }
 
 function alternarFolgaDomingo(loja, data, funcId) {
-  if (!DB.domingos[loja]) DB.domingos[loja] = {};
-  const lista = DB.domingos[loja][data] || [];
-  DB.domingos[loja][data] = lista.includes(funcId) ? lista.filter(id => id !== funcId) : [...lista, funcId];
+  const quadro = DB.domingos[loja] = DB.domingos[loja] || {};
+  DB.domingosFree = DB.domingosFree || {};
+  const free = DB.domingosFree[loja] = DB.domingosFree[loja] || {};
+  const folga = (quadro[data] || []).includes(funcId);
+  const comoFree = (free[data] || []).includes(funcId);
+  if (!folga) quadro[data] = [...(quadro[data] || []), funcId];
+  else if (!comoFree) free[data] = [...(free[data] || []), funcId];
+  else {
+    quadro[data] = quadro[data].filter(id => id !== funcId);
+    free[data] = free[data].filter(id => id !== funcId);
+  }
   salvar();
 }
 
