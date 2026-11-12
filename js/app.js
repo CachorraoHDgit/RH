@@ -131,7 +131,7 @@ function telaFuncionarios() {
     <section class="cabeca">
       <div><h1>Funcionários</h1><p>Cadastro de todos os colaboradores, por loja</p></div>
       <div class="botoes">
-        <label class="btn btn-claro">Importar do ponto<input type="file" accept=".json,.csv,.txt" data-arquivo="ponto" hidden></label>
+        <button class="btn btn-claro" data-acao="atualizar-ponto" title="Busca no Ponto System os funcionários novos e as batidas">Importar do ponto</button>
         <button class="btn btn-principal" data-acao="novo-func">+ Adicionar funcionário</button>
       </div>
     </section>
@@ -155,10 +155,17 @@ function telaFuncionarios() {
 
 // Quem está no Ponto System e ainda não está no cadastro do RH
 function avisoPonto() {
-  const n = pessoasSemVinculo().filter(lojaDaPessoa).length;
-  if (!n) return '';
-  return `<div class="avisos"><ul><li class="av-aviso">${n} funcionário(s) do Ponto System ainda não estão no cadastro.
-    <button class="btn btn-principal btn-mini" data-acao="cadastrar-todos-ponto">Cadastrar todos</button></li></ul></div>`;
+  const sem = pessoasSemVinculo();
+  const n = sem.filter(lojaDaPessoa).length;
+  // Novos no ponto que ainda não bateram em nenhum relógio: o site não sabe a loja, cadastra um por um
+  const novosSemLoja = sem.filter(p => !lojaDaPessoa(p) && (DB.pontoNovos || []).includes(p.codigo));
+  if (!n && !novosSemLoja.length) return '';
+  return `<div class="avisos"><ul>
+    ${n ? `<li class="av-aviso">${n} funcionário(s) do Ponto System ainda não estão no cadastro.
+      <button class="btn btn-principal btn-mini" data-acao="cadastrar-todos-ponto">Cadastrar todos</button></li>` : ''}
+    ${novosSemLoja.length ? `<li class="av-aviso">Novos no Ponto System, ainda sem loja (escolha a loja ao cadastrar):
+      ${novosSemLoja.map(p => `<button class="btn btn-claro btn-mini" data-acao="cadastrar-do-ponto" data-id="${esc(p.codigo)}">${esc(nomeProprio(p.nome))}</button>`).join(' ')}</li>` : ''}
+  </ul></div>`;
 }
 
 // Cargo da carteira, agrupado por setor
@@ -763,7 +770,7 @@ function telaPonto() {
     <section class="cabeca nao-imprime">
       <div><h1>Ponto</h1><p>Pontualidade e hora extra de cada funcionário</p></div>
       <div class="botoes">
-        <label class="btn btn-claro">Importar batidas<input type="file" accept=".csv,.txt" data-arquivo="ponto" hidden></label>
+        <button class="btn btn-claro" data-acao="atualizar-ponto" title="Busca no Ponto System as batidas e os funcionários novos">Atualizar do ponto</button>
         <button class="btn btn-principal" data-acao="imprimir">Imprimir / PDF</button>
       </div>
     </section>
@@ -863,6 +870,7 @@ function telaAjustes() {
       <div class="filtros">
         <label class="campo"><span>Verde: atraso de até (min)</span><input type="number" min="0" max="120" value="${DB.pontoConfig.verde}" data-ponto="verde"></label>
         <label class="campo"><span>Amarelo: atraso de até (min)</span><input type="number" min="0" max="240" value="${DB.pontoConfig.amarelo}" data-ponto="amarelo"></label>
+        <label class="btn btn-claro btn-mini">Importar arquivo do ponto (manual)<input type="file" accept=".json,.csv,.txt" data-arquivo="ponto" hidden></label>
         <label class="campo"><span>Hora extra: chegou mais de (min) antes</span><input type="number" min="0" max="120" value="${DB.pontoConfig.chegadaCedo}" data-ponto="chegadaCedo"></label>
       </div>
       <p class="nota">Acima do amarelo fica vermelho. Hora extra é o que a pessoa trabalha depois da meia-noite (quem sai depois da meia-noite, como o motoboy às 00:30, só conta depois do horário de saída) mais o tempo que chegou antes da entrada, quando passa da tolerância.</p>
@@ -1031,6 +1039,7 @@ Só preenche os meses que ainda estão vazios; o que já foi montado não muda.`
     const n = preencherProximosMeses(LOJAS, UI.mes, 6);
     alert(n ? `Pronto: ${n} mês(es) de loja montados. Confira cada um em Folgas semanais.` : 'Nada para preencher: os próximos meses já estão montados.');
   },
+  'atualizar-ponto': (id, el) => atualizarPontoAgora(el),
   'imprimir': () => window.print(),
   'escala-modo': id => { UI.escalaModo = id; },
   'ponto-modo': id => { UI.pontoModo = id; },

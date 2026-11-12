@@ -163,6 +163,12 @@ function lerJsonPonto(texto) {
   const j = typeof texto === 'string' ? JSON.parse(texto) : texto;
   if (j.fonte !== 'pontosystem' || !Array.isArray(j.batidas)) throw new Error('formato');
   ultimoPonto = j;
+  // Quem apareceu agora no Ponto System (contratação nova): fica marcado até ser cadastrado
+  const conhecidos = new Set((DB.pontoPessoas || []).map(p => p.codigo));
+  if (conhecidos.size) {
+    const novos = j.pessoas.filter(p => !conhecidos.has(p.codigo) && !p.desligado).map(p => p.codigo);
+    DB.pontoNovos = [...new Set([...(DB.pontoNovos || []), ...novos])];
+  }
   DB.pontoPessoas = j.pessoas;
   DB.fichasSemPonto = j.fichasSemPonto || [];
   // Quem está vinculado e ainda não tem horário no RH recebe o horário do ponto

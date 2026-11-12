@@ -155,6 +155,37 @@ async function puxarPonto() {
   if (!modalAberto()) render();
 }
 
+// Botão "Importar do ponto": pede ao servidor a lista nova do Ponto System e importa quando chegar
+async function atualizarPontoAgora(botao) {
+  if (!Nuvem.ativa) { alert('Sem conexão com o servidor agora. Tente de novo em instantes.'); return; }
+  const texto = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = 'Buscando no Ponto System…';
+  const antes = DB.pontoImportado;
+  const semAntes = pessoasSemVinculo().length;
+  try {
+    const { status, j } = await pedirNuvem('atualizar-ponto', {});
+    if (status !== 202 && status !== 200) throw new Error(j.erro || status);
+    // O servidor leva uns 20 a 40 segundos; confere a cada 5
+    for (let i = 0; i < 18; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      await puxarPonto();
+      if (DB.pontoImportado !== antes || j.recente) break;
+    }
+    const novos = pessoasSemVinculo().length - semAntes;
+    render();
+    alert(DB.pontoImportado === antes && !j.recente ? 'O Ponto System está demorando. Tente de novo em alguns minutos.'
+      : novos > 0 ? `${novos} funcionário(s) novo(s) do Ponto System. Cadastre pelo aviso no topo de Funcionários.`
+      : pessoasSemVinculo().filter(lojaDaPessoa).length ? 'Ponto atualizado. Ainda tem gente do Ponto System para cadastrar: veja o aviso em Funcionários.'
+      : 'Ponto atualizado. Nenhum funcionário novo no Ponto System.');
+  } catch (e) {
+    alert('Não deu para buscar no Ponto System agora: ' + e.message);
+  } finally {
+    botao.disabled = false;
+    botao.textContent = texto;
+  }
+}
+
 function esquecerCodigo() {
   Nuvem.ativa = false;
   Nuvem.codigo = '';

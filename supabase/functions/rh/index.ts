@@ -5,6 +5,7 @@
 //   dados       GET   estado salvo + versão (?desde=versão)         (código de acesso)
 //   salvar      POST  { dados, versao } → nova versão ou 409       (código de acesso)
 //   ponto       GET   último arquivo do ponto (?desde=geradoEm)     (código de acesso)
+//   atualizar-ponto POST  busca o Ponto System agora (botão do site) (código de acesso)
 //   sincronizar POST  busca o ponto de ontem (ou ?inicio=&fim=)    (segredo do servidor)
 //   enviar      POST  { ponto?, ficha? } vindos do computador do RH (segredo do servidor)
 //
@@ -194,6 +195,15 @@ Deno.serve(async req => {
         return resposta({ erro: 'conflito', versao: data?.versao }, 409);
       }
       return resposta({ versao: nova });
+    }
+    // Botão "Importar do ponto" do site: busca a lista nova do Ponto System agora (no máximo a cada 3 minutos)
+    if (acao === 'atualizar-ponto' && req.method === 'POST') {
+      const { data: g } = await db.from('ponto').select('gerado_em').eq('id', 'ultimo').maybeSingle();
+      if (g && Date.now() - Date.parse(g.gerado_em) < 3 * 60000) return resposta({ ok: true, recente: true });
+      const ontem = addDias(iso(new Date(Date.now() - 3 * 3600000)), -1);
+      // @ts-ignore EdgeRuntime existe no Supabase
+      EdgeRuntime.waitUntil(sincronizar(ontem, ontem).catch(e => console.error('ponto falhou', e.message)));
+      return resposta({ ok: true }, 202);
     }
     if (acao === 'ponto') {
       if (desde) {
