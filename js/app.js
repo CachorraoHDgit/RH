@@ -321,6 +321,7 @@ function telaFolgas() {
       <div><h1>Folgas semanais</h1><p>Quem folga em cada dia, por loja</p></div>
       <div class="botoes">
         <button class="btn btn-claro" data-acao="gerar-domingos">Sugerir domingos do mês</button>
+        <button class="btn btn-claro" data-acao="proximos-meses" title="Monta os domingos dos 6 meses seguintes em todas as lojas, só onde ainda está vazio">Preencher próximos meses</button>
         <button class="btn btn-principal" data-acao="imprimir">Imprimir / PDF</button>
       </div>
     </section>
@@ -362,7 +363,11 @@ function agruparAvisos(avisos) {
 function gradeDeDomingos(loja, equipe, domingos, quadro) {
   const dias = domingos.map(d => ({ d, r: escalaDia(loja, d) }));
   // Quem está afastado em todos os domingos do mês sai da grade e vai para a caixa de afastados
-  const linhas = equipe.filter(entraNaEscala).filter(f => domingos.some(d => statusDia(f, d) && !afastadoEm(f, d)));
+  const mes = domingos[0].slice(0, 7);
+  const presentes = equipe.filter(f => domingos.some(d => statusDia(f, d) && !afastadoEm(f, d)));
+  const linhas = presentes.filter(f => noRodizio(f, mes));
+  // Da escala, mas fora do quadro de domingo (ex.: turno do dia): ficam numa parte separada, ainda clicáveis
+  const outros = presentes.filter(f => !noRodizio(f, mes) && entraNaEscala(f));
   const celula = (f, d) => {
     const st = statusDia(f, d);
     if (!st) return '<td class="cel-dom"><span class="quad quad-vazio">—</span></td>';
@@ -374,13 +379,16 @@ function gradeDeDomingos(loja, equipe, domingos, quadro) {
     const rotulo = { 'férias': 'Férias', afastamento: 'Licença', 'folga fixa': 'Folga fixa' }[st.motivo] || st.motivo;
     return `<td class="cel-dom"><span class="quad quad-fixo" title="${esc(st.motivo === 'afastamento' ? textoAfastamento(f) : st.motivo)}">${rotulo}</span></td>`;
   };
-  const corpo = linhas.map(f => {
+  const linha = f => {
     const folgas = domingos.filter(d => (statusDia(f, d) || {}).motivo === 'domingo').length;
     const regra = f.sexo === 'M' ? 'mulher' : f.alternaDomingos ? 'homem · alterna' : 'homem';
     return `<tr><th class="col-nome">${esc(f.nome)} <small>${regra}</small></th>
       ${domingos.map(d => celula(f, d)).join('')}
       <td class="col-total">${folgas}</td></tr>`;
-  }).join('');
+  };
+  const corpo = linhas.map(linha).join('') + (outros.length
+    ? `<tr class="grade-sep"><td colspan="${domingos.length + 2}">Não estão no quadro de domingo (turno do dia ou fora do rodízio). Clique num quadradinho para incluir.</td></tr>` + outros.map(linha).join('')
+    : '');
   const cabeca = dias.map(({ d, r }) => `<th class="col-dom"><b>${brCurta(d)}</b>
       ${r.feriado ? '<span class="tag-dia tag-feriado">Feriado</span>' : r.vespera ? '<span class="tag-dia tag-vespera">Véspera</span>' : ''}
       ${!quadro[d] ? '<span class="tag-dia">Não definido</span>' : ''}</th>`).join('');
@@ -1015,6 +1023,13 @@ const ACOES = {
     const temQuadro = domingosDoMes(UI.mes).some(d => (DB.domingos[UI.loja] || {})[d]);
     if (temQuadro && !confirm('Já existe quadro de domingos neste mês. Substituir pela sugestão automática?')) return;
     gerarDomingos(UI.loja, UI.mes);
+  },
+  'proximos-meses': () => {
+    if (!confirm(`Montar os domingos de ${nomeMes(mesSeguinte(UI.mes))} em diante (6 meses), em todas as lojas?
+
+Só preenche os meses que ainda estão vazios; o que já foi montado não muda.`)) return;
+    const n = preencherProximosMeses(LOJAS, UI.mes, 6);
+    alert(n ? `Pronto: ${n} mês(es) de loja montados. Confira cada um em Folgas semanais.` : 'Nada para preencher: os próximos meses já estão montados.');
   },
   'imprimir': () => window.print(),
   'escala-modo': id => { UI.escalaModo = id; },

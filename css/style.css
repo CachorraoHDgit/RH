@@ -587,3 +587,5 @@ details.avisos summary::-webkit-details-marker { display: none; }
 details.avisos summary h3 { margin: 0; }
 details.avisos summary small { color: var(--text-muted); font-size: 11px; }
 details.avisos[open] summary { margin-bottom: 6px; }
+.grade-dom .grade-sep td { text-align: left; font-size: 11.5px; color: var(--text-muted); background: var(--bg-column); padding: 8px 12px; }
+@media print { .grade-dom .grade-sep, .grade-dom .grade-sep ~ tr { display: none; } }

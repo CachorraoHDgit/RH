@@ -67,6 +67,19 @@ function entraNaEscala(f) {
   return f.funcoes.some(x => FUNCOES_ESCALA.includes(x));
 }
 
+// Faz parte do rodízio de domingo no mês. Quando o quadro já está montado, é quem aparece nele
+// (o turno do dia e quem não está no quadro ficam de fora); quem é novo na loja entra direto.
+function noRodizio(f, mes) {
+  const quadro = DB.domingos[f.loja] || {};
+  const marcado = m => domingosDoMes(m).some(d => (quadro[d] || []).includes(f.id));
+  const montado = m => domingosDoMes(m).some(d => quadro[d]);
+  const ant = mesAnterior(mes);
+  const novo = !domingosDoMes(ant).some(d => ativoEm(f, d));
+  if (montado(mes)) return marcado(mes) || (novo && entraNaEscala(f));
+  if (montado(ant)) return marcado(ant) || (novo && entraNaEscala(f));
+  return entraNaEscala(f);
+}
+
 function freelasDoDia(loja, data) {
   return DB.freelas.filter(x => x.loja === loja && x.data === data);
 }
@@ -210,7 +223,7 @@ function validarFolgas(loja, mes) {
     if (!f.folgas.length) add('erro', `${f.nome}: sem folga fixa cadastrada.`);
   });
   // Regras de domingo valem para quem entra na escala e não tem folga fixa no domingo
-  const doDomingo = equipe.filter(f => entraNaEscala(f) && !f.folgas.includes('dom'));
+  const doDomingo = equipe.filter(f => noRodizio(f, mes) && !f.folgas.includes('dom'));
 
   domingos.forEach(d => {
     if (!quadro[d]) add('aviso', `Domingo ${brCurta(d)}: quadro ainda não definido.`);
@@ -253,7 +266,7 @@ function gerarDomingos(loja, mes) {
   const domingos = domingosDoMes(mes);
   const quadroAnterior = DB.domingos[loja] || {};
   const anterior = addDias(domingos[0], -7);
-  const equipe = equipeDaLoja(loja, mes).filter(f => entraNaEscala(f) && !f.folgas.includes('dom'));
+  const equipe = equipeDaLoja(loja, mes).filter(f => noRodizio(f, mes) && !f.folgas.includes('dom'));
   const novo = {};
   domingos.forEach(d => { novo[d] = []; });
 
@@ -278,16 +291,54 @@ function gerarDomingos(loja, mes) {
   // Salão tem 1 pessoa por dia: evita tirar dois do salão no mesmo domingo
   const doSalao = f => f.funcoes.includes('salão');
   const mesmoSetorNoDomingo = (f, d) => (doSalao(f) ? novo[d].filter(id => doSalao(funcionario(id))).length : 0);
+  // Mesma função principal de folga no mesmo domingo (ex.: dois prensadores) pesa contra
+  const principal = f => f.funcoes.find(x => FUNCOES_ESCALA.includes(x));
+  const mesmaFuncao = (f, d) => novo[d].filter(id => principal(funcionario(id)) === principal(f)).length;
+  // Gira de um mês para o outro: evita repetir a mesma semana (1º, 2º... domingo) do mês anterior
+  const domingosAnt = domingosDoMes(mesAnterior(mes));
+  const semanaAnterior = f => domingosAnt.findIndex(d => (quadroAnterior[d] || []).includes(f.id));
   equipe.filter(f => !alternaDomingos(f)).forEach(f => {
     const opcoes = domingos.filter(d => disponivel(f, d));
     if (opcoes.length < domingos.length) return; // férias/afastamento em algum domingo
+    const repete = d => (domingos.indexOf(d) === semanaAnterior(f) ? 1 : 0);
     opcoes.sort((a, b) => mesmoSetorNoDomingo(f, a) - mesmoSetorNoDomingo(f, b) ||
-      homemNoDomingo(a) - homemNoDomingo(b) || novo[a].length - novo[b].length);
+      homemNoDomingo(a) - homemNoDomingo(b) || mesmaFuncao(f, a) - mesmaFuncao(f, b) ||
+      repete(a) - repete(b) || novo[a].length - novo[b].length);
     if (opcoes.length) novo[opcoes[0]].push(f.id);
   });
 
   DB.domingos[loja] = { ...quadroAnterior, ...novo };
   salvar();
+}
+
+function mesAnterior(mes) {
+  const [a, m] = mes.split('-').map(Number);
+  return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, '0')}`;
+}
+
+function mesSeguinte(mes) {
+  const [a, m] = mes.split('-').map(Number);
+  return m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, '0')}`;
+}
+
+// Mês que ainda não tem nenhum domingo montado
+function domingosVazios(loja, mes) {
+  const quadro = DB.domingos[loja] || {};
+  return domingosDoMes(mes).every(d => !quadro[d]);
+}
+
+// Monta, em sequência, os meses seguintes que ainda estão vazios (continua a alternância de cada um).
+// Não mexe em mês já montado. Devolve quantos meses foram preenchidos.
+function preencherProximosMeses(lojas, desde, quantos) {
+  let feitos = 0;
+  lojas.forEach(loja => {
+    let mes = desde;
+    for (let i = 0; i < quantos; i++) {
+      mes = mesSeguinte(mes);
+      if (domingosVazios(loja, mes) && equipeDaLoja(loja, mes).some(f => noRodizio(f, mes))) { gerarDomingos(loja, mes); feitos++; }
+    }
+  });
+  return feitos;
 }
 
 function alternarFolgaDomingo(loja, data, funcId) {
