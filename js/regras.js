@@ -108,13 +108,13 @@ function freelasDoDia(loja, data) {
 
 // Vagas do dia conforme a equipe mínima da loja. Feriado e véspera usam a composição
 // de domingo e ganham vagas extras de "ideal" (sempre prever freelancer).
-// Em sexta e sábado (todos trabalham) cada função pede o maior entre a equipe mínima
-// e quantos normalmente estariam ali (quem está de férias/afastado precisa ser coberto).
-function vagasDoDia(cfg, tipo, esperado) {
+// Em sexta e sábado (todos trabalham) quem está de férias/afastado sem substituto
+// abre uma vaga a mais na função dele, além da equipe mínima.
+function vagasDoDia(cfg, tipo, cobrir) {
   const comp = tipo === 'domingo' || tipo === 'feriado' ? cfg.domingo : cfg.semana;
   const vagas = [];
   FUNCOES_ESCALA.forEach(fn => {
-    const n = Math.max(comp[fn] || 0, (esperado && esperado[fn]) || 0);
+    const n = (comp[fn] || 0) + ((cobrir && cobrir[fn]) || 0);
     for (let i = 0; i < n; i++) vagas.push({ funcao: fn, ideal: false });
   });
   if (tipo === 'feriado') {
@@ -175,15 +175,13 @@ function escalaDia(loja, data) {
   const r = { loja, data, dow, feriado, vespera, tipo, cozinha: [], salao: [], folgam, afastados,
     definida: cfg.definida, minimo: 0, ideal: 0, freelas: [], marcados, alerta: '', aviso: '' };
 
-  let esperado = null;
+  let cobrir = null;
   if (dow >= 5) {
-    esperado = {};
+    cobrir = {};
     const principal = f => f.funcoes.find(x => FUNCOES_ESCALA.includes(x));
-    [...trabalham.filter(p => p.f).map(p => p.f), ...fora].forEach(f => {
-      esperado[principal(f)] = (esperado[principal(f)] || 0) + 1;
-    });
+    fora.forEach(f => { cobrir[principal(f)] = (cobrir[principal(f)] || 0) + 1; });
   }
-  const vagas = cfg.definida ? vagasDoDia(cfg, tipo, esperado) : [];
+  const vagas = cfg.definida ? vagasDoDia(cfg, tipo, cobrir) : [];
   const { vagaDaPessoa, pessoaDaVaga } = encaixar(trabalham, vagas);
 
   trabalham.forEach((p, i) => {
