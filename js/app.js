@@ -45,6 +45,7 @@ const etiqueta = (texto, tipo) => `<span class="tag tag-${tipo}">${esc(texto)}</
 // ---------- Estrutura ----------
 
 function render() {
+  if (!(UI.tela === 'ponto' ? LOJAS : LOJAS_ESCALA).includes(UI.loja)) UI.loja = LOJAS[0];
   salvarUi();
   document.getElementById('abas').innerHTML = TELAS
     .map(t => `<button class="item-menu${t.id === UI.tela ? ' ativo' : ''}" data-acao="tela" data-id="${t.id}">${t.icone}<span>${t.nome}</span></button>`)
@@ -76,9 +77,9 @@ function renderLembrete() {
     </div>` : '';
 }
 
-function seletorLoja(valor, acao, todas) {
+function seletorLoja(valor, acao, todas, lista = LOJAS_ESCALA) {
   return `<label class="campo"><span>Loja</span>
-    <select data-muda="${acao}">${opcoes(LOJAS, valor, todas ? 'Todas as lojas' : undefined)}</select></label>`;
+    <select data-muda="${acao}">${opcoes(lista, valor, todas ? 'Todas as lojas' : undefined)}</select></label>`;
 }
 
 function seletorMes() {
@@ -146,7 +147,7 @@ function telaFuncionarios() {
     ${avisoPonto()}
     <div class="contadores">${contagem}</div>
     <div class="filtros">
-      ${seletorLoja(UI.filtroLoja, 'filtro-loja', true)}
+      ${seletorLoja(UI.filtroLoja, 'filtro-loja', true, LOJAS)}
       <label class="campo"><span>Situação</span><select data-muda="filtro-situacao">
         ${opcoes([['atuais', 'Todos menos desligados'], ['', 'Todos (com histórico)'], ...SITUACOES], UI.filtroSituacao)}
       </select></label>
@@ -635,7 +636,7 @@ function escalaPorDia() {
   const d = UI.dia;
   // Imprimindo uma loja só: os outros cartões não saem no PDF
   const sai = loja => !UI.imprimeLoja || UI.imprimeLoja === loja ? '' : ' nao-imprime';
-  const cartoes = LOJAS.map(loja => {
+  const cartoes = LOJAS_ESCALA.map(loja => {
     const r = escalaDia(loja, d);
     if (!r.cozinha.length && !r.salao.length && !r.folgam.length) {
       return `<div class="cartao-loja vazio-loja${sai(loja)}"><h3>${esc(loja)}</h3><p>Sem funcionários na escala.</p></div>`;
@@ -892,7 +893,7 @@ function telaPonto() {
         <button class="btn btn-principal" data-acao="imprimir">Imprimir / PDF</button>
       </div>
     </section>
-    <div class="filtros nao-imprime">${seletorLoja(loja, 'loja')}
+    <div class="filtros nao-imprime">${seletorLoja(loja, 'loja', false, LOJAS)}
       <label class="campo"><span>De</span><input type="date" value="${UI.pontoDe}" data-muda="ponto-de"></label>
       <label class="campo"><span>Até</span><input type="date" value="${UI.pontoAte}" data-muda="ponto-ate"></label>
     </div>
@@ -1012,7 +1013,7 @@ function formFeriado(h) {
     </div>
     <label class="campo campo-largo"><span>Nome *</span><input name="nome" required value="${esc(h.nome)}"></label>
     <fieldset class="campo"><legend>Lojas <small>(nenhuma marcada = todas)</small></legend>
-      <div class="radios">${LOJAS.map(l => `<label><input type="checkbox" name="lojas" value="${esc(l)}" ${h.lojas.includes(l) ? 'checked' : ''}> ${esc(l)}</label>`).join('')}</div>
+      <div class="radios">${LOJAS_ESCALA.map(l => `<label><input type="checkbox" name="lojas" value="${esc(l)}" ${h.lojas.includes(l) ? 'checked' : ''}> ${esc(l)}</label>`).join('')}</div>
     </fieldset>
     ${novo ? '' : '<button type="button" class="btn btn-perigo" data-acao="excluir-feriado">Excluir feriado</button>'}
   `, dados => {
@@ -1146,7 +1147,7 @@ const ACOES = {
     if (!confirm(`Montar os domingos de ${nomeMes(mesSeguinte(UI.mes))} em diante (6 meses), em todas as lojas?
 
 Só preenche os meses que ainda estão vazios; o que já foi montado não muda.`)) return;
-    const n = preencherProximosMeses(LOJAS, UI.mes, 6);
+    const n = preencherProximosMeses(LOJAS_ESCALA, UI.mes, 6);
     alert(n ? `Pronto: ${n} mês(es) de loja montados. Confira cada um em Folgas semanais.` : 'Nada para preencher: os próximos meses já estão montados.');
   },
   'atualizar-ponto': (id, el) => atualizarPontoAgora(el),

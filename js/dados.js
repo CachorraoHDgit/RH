@@ -1,6 +1,8 @@
 // Cadastro e persistência. Os dados ficam no servidor do RH (js/nuvem.js), com cópia no navegador (localStorage).
 
-const LOJAS = ['Jardim Atlântico', 'Campeche', 'Itacorubi', 'Palhoça', 'Biguaçu', 'Forquilhinhas', 'Produção', 'Administrativo'];
+const LOJAS = ['Jardim Atlântico', 'Campeche', 'Itacorubi', 'Palhoça', 'Biguaçu', 'Produção', 'Administrativo'];
+// Administrativo é setor do cadastro e do ponto, não entra em folgas, escala nem ajustes
+const LOJAS_ESCALA = LOJAS.filter(l => l !== 'Administrativo');
 
 // Cargo que está na carteira de trabalho, agrupado por setor
 const CARGOS = {
