@@ -678,3 +678,11 @@ details.avisos[open] summary { margin-bottom: 6px; }
 .df-erro { background: var(--red-subtle); color: var(--red-primary); }
 .df-aviso { background: var(--amber-subtle); color: var(--amber); }
 .resumo-lista h3 small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* Escala do dia: PDF de uma loja só */
+.btn-pdf-loja { margin-left: auto; padding: 3px 10px; font-size: 12px; }
+@media print {
+  .cartoes-lojas.uma-loja { display: block; }
+  .cartoes-lojas.uma-loja .cartao-loja { border: none; box-shadow: none; }
+  .cartoes-lojas.uma-loja .esc-grupos li { font-size: 14px; }
+}

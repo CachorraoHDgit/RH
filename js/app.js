@@ -57,7 +57,7 @@ function render() {
   // Rodapé azul do modelo de PDF (o quadro de folgas já traz o dele)
   if (UI.tela === 'escala' || UI.tela === 'ponto') {
     const mes = UI.tela === 'ponto' ? diasDoPonto()[0].slice(0, 7) : UI.mes;
-    tela.insertAdjacentHTML('beforeend', pdfRodape(UI.escalaModo === 'dia' && UI.tela === 'escala' ? '' : UI.loja, mes));
+    tela.insertAdjacentHTML('beforeend', pdfRodape(UI.escalaModo === 'dia' && UI.tela === 'escala' ? (UI.imprimeLoja || '') : UI.loja, mes));
   }
 }
 
@@ -633,13 +633,16 @@ function escalaPorMes() {
 
 function escalaPorDia() {
   const d = UI.dia;
+  // Imprimindo uma loja só: os outros cartões não saem no PDF
+  const sai = loja => !UI.imprimeLoja || UI.imprimeLoja === loja ? '' : ' nao-imprime';
   const cartoes = LOJAS.map(loja => {
     const r = escalaDia(loja, d);
     if (!r.cozinha.length && !r.salao.length && !r.folgam.length) {
-      return `<div class="cartao-loja vazio-loja"><h3>${esc(loja)}</h3><p>Sem funcionários na escala.</p></div>`;
+      return `<div class="cartao-loja vazio-loja${sai(loja)}"><h3>${esc(loja)}</h3><p>Sem funcionários na escala.</p></div>`;
     }
-    return `<div class="cartao-loja ${r.alerta ? 'dia-alerta' : ''}">
-      <div class="domingo-topo"><h3>${esc(loja)}</h3>${etiquetasDia(r)}</div>
+    return `<div class="cartao-loja ${r.alerta ? 'dia-alerta' : ''}${sai(loja)}">
+      <div class="domingo-topo"><h3>${esc(loja)}</h3>${etiquetasDia(r)}
+        <button class="btn btn-pdf-loja nao-imprime" data-acao="imprimir-loja" data-id="${esc(loja)}">PDF</button></div>
       <div class="esc-grupos">
         <div><h4>Cozinha</h4>${nomesEscalados(r.cozinha)}</div>
         <div><h4>Salão</h4>${nomesEscalados(r.salao)}</div>
@@ -659,8 +662,9 @@ function escalaPorDia() {
           <button class="btn btn-icone" data-acao="dia" data-n="1" aria-label="Próximo dia">›</button>
         </div></label>
     </div>
-    <h2 class="titulo-dia">${SEMANA_LONGA[diaSemana(d)]}, ${br(d)}</h2>
-    <div class="cartoes-lojas">${cartoes}</div>`;
+    ${UI.imprimeLoja ? pdfTopo('ESCALA DO DIA', UI.imprimeLoja.toUpperCase(), `${SEMANA_LONGA[diaSemana(d)]}, ${br(d)}`) : ''}
+    <h2 class="titulo-dia${UI.imprimeLoja ? ' nao-imprime' : ''}">${SEMANA_LONGA[diaSemana(d)]}, ${br(d)}</h2>
+    <div class="cartoes-lojas${UI.imprimeLoja ? ' uma-loja' : ''}">${cartoes}</div>`;
 }
 
 // Registra um freelancer já combinado para o dia; ele entra na conta da escala
@@ -1147,6 +1151,11 @@ Só preenche os meses que ainda estão vazios; o que já foi montado não muda.`
   },
   'atualizar-ponto': (id, el) => atualizarPontoAgora(el),
   'imprimir': () => window.print(),
+  'imprimir-loja': id => {
+    UI.imprimeLoja = id; render();
+    window.print();
+    UI.imprimeLoja = null; render();
+  },
   'escala-modo': id => { UI.escalaModo = id; },
   'ponto-modo': id => { UI.pontoModo = id; },
   'cadastrar-todos-ponto': () => {
@@ -1172,7 +1181,7 @@ Só preenche os meses que ainda estão vazios; o que já foi montado não muda.`
 };
 // Ações que só mexem dentro do modal não redesenham a tela
 const SEM_RENDER = new Set(['novo-func', 'editar-func', 'cadastrar-do-ponto', 'desligar', 'novo-freela', 'nova-ferias', 'editar-ferias',
-  'novo-feriado', 'editar-feriado', 'exportar', 'modelo-csv', 'imprimir', 'fechar-modal', 'menu', 'tema']);
+  'novo-feriado', 'editar-feriado', 'exportar', 'modelo-csv', 'imprimir', 'imprimir-loja', 'fechar-modal', 'menu', 'tema']);
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-acao]');
