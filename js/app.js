@@ -827,12 +827,13 @@ function celulaPonto(p) {
     return `<td class="pt-folga" title="${esc(p.motivo)}">${texto}</td>`;
   }
   const titulo = `Batidas: ${p.batidas.map(relogio).join(' · ')}` +
-    (p.atraso ? ` — ${p.atraso} min de atraso` : '') + (p.incompleto ? ' — falta uma batida' : '') +
+    (p.pre.length ? ` (intervalo pré-assinalado ${p.pre.map(relogio).join('–')})` : '') +
+    (p.atraso ? ` — ${p.atraso} min de atraso` : '') + (p.incompleto ? ' — falta a saída' : '') + (p.semEntrada ? ' — não bateu a entrada' : '') +
     (p.extraAntes ? ` — chegou ${horas(p.extraAntes)} antes` : '') + (p.extraDepois ? ` — ficou ${horas(p.extraDepois)} depois` : '');
   // Entrada, saída e hora extra, uma embaixo da outra
   return `<td class="pt-${p.cor || 'sem'}" title="${esc(titulo)}">
     ${p.naFolga ? '<small class="pt-na-folga">na folga</small>' : ''}
-    <b>${relogio(p.chegada)}</b>
+    <b>${p.semEntrada ? '<i>sem entrada</i>' : relogio(p.chegada)}</b>
     <span class="pt-saida">${p.incompleto ? '<i>sem saída</i>' : relogio(p.batidas[p.batidas.length - 1])}</span>
     ${p.extra ? `<small class="pt-extra">+${horas(p.extra)}</small>` : ''}</td>`;
 }

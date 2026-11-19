@@ -34,28 +34,47 @@ function corAtraso(atraso) {
   return 'vermelho';
 }
 
-// Resultado de um dia: { batidas, chegada, atraso, cor, trabalhado, extra, incompleto }
+// Intervalo pré-assinalado do dia (marcações "P" do Ponto System: o sistema põe sozinho, ninguém bate)
+function preAssinaladasDe(funcId, data) {
+  return ((DB.preAssinaladas || {})[funcId] || {})[data] || [];
+}
+
+// Resultado de um dia: { batidas, pre, chegada, atraso, cor, trabalhado, extra, incompleto, semEntrada }
 // ou, sem batidas, { motivo } (folga, férias...) ou null.
 function pontoDia(f, data) {
   const b = batidasDe(f.id, data);
   const st = statusDia(f, data);
   if (!b.length) return st && !st.trabalha ? { motivo: st.motivo } : null;
+  const pre = preAssinaladasDe(f.id, data);
   const entrada = minutos(f.entrada);
-  const atraso = entrada === null ? null : Math.max(0, b[0] - entrada);
-  // Hora extra começa na meia-noite, ou no horário de saída se ele for depois (ex.: motoboy sai 00:30)
   const saida = minutos(f.horaSaida);
+  const fimDoDia = saida !== null && entrada !== null && saida < entrada ? saida + MEIA_NOITE : saida;
+  const impar = b.length % 2 === 1;
+  // Batidas ímpares: falta a entrada quando a primeira batida já é depois do intervalo pré-assinalado
+  // ou, sem intervalo, quando a única batida está mais perto do horário de saída que do de entrada
+  const semEntrada = impar && (pre.length ? b[0] > pre[0]
+    : b.length === 1 && entrada !== null && fimDoDia !== null && Math.abs(b[0] - fimDoDia) < Math.abs(b[0] - entrada));
+  // O tempo trabalhado desconta o intervalo pré-assinalado; sem a entrada, conta da volta do intervalo
+  let marcas = [...new Set([...b, ...pre])].sort((x, y) => x - y);
+  if (semEntrada) {
+    const volta = pre.filter(m => m <= b[0]).pop();
+    marcas = volta === undefined ? b.slice(1) : marcas.filter(m => m >= volta);
+  } else if (marcas.length % 2 !== b.length % 2) marcas = b;
+  const atraso = entrada === null || semEntrada ? null : Math.max(0, b[0] - entrada);
+  // Hora extra começa na meia-noite, ou no horário de saída se ele for depois (ex.: motoboy sai 00:30)
   const limite = saida !== null && entrada !== null && saida < entrada ? saida + MEIA_NOITE : MEIA_NOITE;
   let trabalhado = 0, extraDepois = 0;
-  for (let i = 0; i + 1 < b.length; i += 2) {
-    trabalhado += b[i + 1] - b[i];
-    extraDepois += Math.max(0, b[i + 1] - Math.max(b[i], limite));
+  for (let i = 0; i + 1 < marcas.length; i += 2) {
+    trabalhado += marcas[i + 1] - marcas[i];
+    extraDepois += Math.max(0, marcas[i + 1] - Math.max(marcas[i], limite));
   }
   // Chegou mais cedo que a tolerância: todo o tempo antes da entrada conta como extra
-  const cedo = entrada === null ? 0 : Math.max(0, entrada - b[0]);
+  const cedo = entrada === null || semEntrada ? 0 : Math.max(0, entrada - b[0]);
   const extraAntes = cedo > DB.pontoConfig.chegadaCedo ? cedo : 0;
   return {
-    batidas: b, chegada: b[0], atraso, cor: atraso === null ? '' : corAtraso(atraso),
-    trabalhado, extra: extraAntes + extraDepois, extraAntes, extraDepois, incompleto: b.length % 2 === 1,
+    batidas: b, pre, chegada: semEntrada ? null : b[0], atraso, cor: atraso === null ? '' : corAtraso(atraso),
+    trabalhado, extra: extraAntes + extraDepois, extraAntes, extraDepois,
+    incompleto: impar && !semEntrada, semEntrada,
     naFolga: !!st && !st.trabalha && st.motivo !== 'férias',
   };
 }
@@ -82,17 +101,26 @@ function relatorioPonto(loja, dias) {
     });
 }
 
-// Grava batidas ({ funcId, data: dia de trabalho, min }) agrupando por jornada.
+// Grava batidas ({ funcId, data: dia de trabalho, min, pre }) agrupando por jornada.
+// pre = marcação pré-assinalada (intervalo que o Ponto System põe sozinho): fica separada das batidas.
 // Os dias recebidos substituem o que já havia gravado para eles.
 function gravarBatidas(lista) {
   const novos = {};
-  lista.forEach(({ funcId, data, min }) => {
-    ((novos[funcId] = novos[funcId] || {})[data] = novos[funcId][data] || []).push(min);
+  lista.forEach(({ funcId, data, min, pre }) => {
+    const dia = (novos[funcId] = novos[funcId] || {})[data] = novos[funcId][data] || { b: [], pre: [] };
+    dia[pre ? 'pre' : 'b'].push(min);
   });
+  DB.preAssinaladas = DB.preAssinaladas || {};
+  const ordem = l => [...new Set(l)].sort((x, y) => x - y);
   let dias = 0;
   Object.entries(novos).forEach(([funcId, porDia]) => {
     const atual = DB.batidas[funcId] = DB.batidas[funcId] || {};
-    Object.entries(porDia).forEach(([data, b]) => { atual[data] = [...new Set(b)].sort((x, y) => x - y); dias++; });
+    const preAtual = DB.preAssinaladas[funcId] = DB.preAssinaladas[funcId] || {};
+    Object.entries(porDia).forEach(([data, { b, pre }]) => {
+      if (b.length) atual[data] = ordem(b); else delete atual[data];
+      if (pre.length) preAtual[data] = ordem(pre); else delete preAtual[data];
+      dias++;
+    });
   });
   salvar();
   return dias;
@@ -183,7 +211,7 @@ function lerJsonPonto(texto) {
   j.batidas.forEach(x => {
     const f = acharFuncionario(x.codigo, x.nome);
     if (!f) { naoAchados.add(x.nome); return; }
-    batidas.push({ funcId: f.id, data: x.data, min: x.min });
+    batidas.push({ funcId: f.id, data: x.data, min: x.min, pre: x.tipo === 'P' });
   });
   const erros = naoAchados.size ? [`${naoAchados.size} pessoa(s) do ponto ainda sem cadastro no RH. Clique em "Cadastrar todos" na tela Funcionários.`] : [];
   return { batidas, erros };

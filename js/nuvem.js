@@ -146,10 +146,11 @@ async function atualizarDaNuvem(forcarPonto) {
 async function puxarPonto() {
   Nuvem.ultimaPonto = Date.now();
   // Na primeira vez da sessão baixa o arquivo inteiro: "Cadastrar todos" e o formulário usam ele (ultimoPonto)
-  const desde = ultimoPonto ? '&desde=' + encodeURIComponent(DB.pontoImportado || '') : '';
+  // Sem o intervalo pré-assinalado separado (versão antiga do site), baixa tudo de novo uma vez
+  const desde = ultimoPonto && DB.preAssinaladas ? '&desde=' + encodeURIComponent(DB.pontoImportado || '') : '';
   const { status, j } = await pedirNuvem('ponto', null, desde);
   if (status !== 200 || !j || j.igual || !j.geradoEm) return;
-  if (j.geradoEm === DB.pontoImportado) { ultimoPonto = j; return; }
+  if (j.geradoEm === DB.pontoImportado && DB.preAssinaladas) { ultimoPonto = j; return; }
   importarPonto(j);
   if (aplicarAjustesPonto()) importarPonto(j);
   if (!modalAberto()) render();
