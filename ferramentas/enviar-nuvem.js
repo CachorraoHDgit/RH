@@ -14,13 +14,13 @@ const segredo = fs.readFileSync(path.join(pasta, 'segredo-nuvem.txt'), 'utf8').t
 
 async function main() {
   const [modo, inicio, fim] = process.argv.slice(2);
-  // node ferramentas/enviar-nuvem.js relatorio [segunda] [previa] → relatório no WhatsApp (previa = só mostra)
+  // node ferramentas/enviar-nuvem.js relatorio [segunda] [previa] → PDF do relatório no WhatsApp (previa = só gera e mostra o link)
   if (modo === 'relatorio') {
     const q = new URLSearchParams({ acao: 'relatorio', ...(inicio && inicio !== 'previa' ? { inicio } : {}),
       ...(process.argv.includes('previa') ? { previa: '1' } : {}) });
     const r = await fetch(`${SERVIDOR}?${q}`, { method: 'POST', headers: { 'x-rh-servidor': segredo } });
     const j = await r.json();
-    console.log(r.status, j.texto || JSON.stringify(j));
+    console.log(r.status, j.link ? `${j.arquivo}\n${j.link}` : JSON.stringify(j));
     return;
   }
   if (modo === 'sincronizar') {

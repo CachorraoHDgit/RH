@@ -8,12 +8,13 @@
 //   atualizar-ponto POST  busca o Ponto System agora (botão do site) (código de acesso)
 //   sincronizar POST  busca o ponto de ontem (ou ?inicio=&fim=)    (segredo do servidor)
 //   enviar      POST  { ponto?, ficha? } vindos do computador do RH (segredo do servidor)
-//   relatorio   POST  hora extra e atrasos da semana passada no WhatsApp (?inicio=, ?previa=1) (segredo do servidor)
+//   relatorio   POST  PDF de hora extra e atrasos da semana passada no WhatsApp (?inicio=, ?previa=1) (segredo do servidor)
 //
 // O código de acesso, a chave do Ponto System e o segredo do servidor ficam na tabela "segredos",
 // que só esta função lê.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { relatorioSemanal } from './relatorio.ts';
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
@@ -148,110 +149,6 @@ async function sincronizar(inicio: string, fim: string) {
   return { inicio, fim, batidas: novas.length };
 }
 
-// ---------- Relatório semanal no WhatsApp ----------
-// Mesmas regras do ponto no site (js/ponto.js): atraso = chegada depois da tolerância verde;
-// hora extra = chegou antes da tolerância "chegadaCedo" + o que passou da meia-noite / do horário de saída.
-// O intervalo pré-assinalado (marcação "P") não é batida; dia sem entrada não conta como atraso.
-
-const LOJAS = ['Jardim Atlântico', 'Campeche', 'Itacorubi', 'Palhoça', 'Biguaçu', 'Produção', 'Administrativo'];
-const MEIA_NOITE = 1440;
-const minutos = (hhmm: string) => { const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
-const horas = (min: number) => { const h = Math.floor(min / 60), m = min % 60; return !h ? `${m}min` : m ? `${h}h${pad(m)}` : `${h}h`; };
-const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
-const brCurta = (s: string) => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
-const ordem = (l: number[]) => [...new Set(l)].sort((x, y) => x - y);
-
-function ativoEm(f: any, data: string) {
-  if (f.inicio && data < f.inicio) return false;
-  if (f.situacao === 'Aviso prévio' && f.avisoFim && data > f.avisoFim) return false;
-  if (f.situacao === 'Desligado' && (!f.saida || data > f.saida)) return false;
-  return true;
-}
-
-function resultadoDia(f: any, b: number[], pre: number[], cfg: any) {
-  const entrada = minutos(f.entrada), saida = minutos(f.horaSaida);
-  const virada = saida !== null && entrada !== null && saida < entrada;
-  const fimDoDia = virada ? saida! + MEIA_NOITE : saida;
-  const impar = b.length % 2 === 1;
-  const semEntrada = impar && (pre.length ? b[0] > pre[0]
-    : b.length === 1 && entrada !== null && fimDoDia !== null && Math.abs(b[0] - fimDoDia) < Math.abs(b[0] - entrada));
-  let marcas = ordem([...b, ...pre]);
-  if (semEntrada) {
-    const volta = pre.filter(m => m <= b[0]).pop();
-    marcas = volta === undefined ? b.slice(1) : marcas.filter(m => m >= volta);
-  } else if (marcas.length % 2 !== b.length % 2) marcas = b;
-  const atraso = entrada === null || semEntrada ? null : Math.max(0, b[0] - entrada);
-  const limite = virada ? saida! + MEIA_NOITE : MEIA_NOITE;
-  let extraDepois = 0;
-  for (let i = 0; i + 1 < marcas.length; i += 2) extraDepois += Math.max(0, marcas[i + 1] - Math.max(marcas[i], limite));
-  const cedo = entrada === null || semEntrada ? 0 : Math.max(0, entrada - b[0]);
-  return { atraso, extra: (cedo > cfg.chegadaCedo ? cedo : 0) + extraDepois };
-}
-
-// Texto do relatório de uma semana (inicio = segunda)
-async function montarRelatorio(inicio: string) {
-  const fim = addDias(inicio, 6);
-  const [{ data: e }, { data: p }] = await Promise.all([
-    db.from('estado').select('dados').eq('id', 'rh').maybeSingle(),
-    db.from('ponto').select('dados').eq('id', 'ultimo').maybeSingle(),
-  ]);
-  const estado = e?.dados || {}, ponto = p?.dados || {};
-  const cfg = { verde: 5, amarelo: 15, chegadaCedo: 10, ...(estado.pontoConfig || {}) };
-  const funcs: any[] = estado.funcionarios || [];
-  const porCodigo = new Map(funcs.filter(f => f.codigoPonto).map(f => [f.codigoPonto, f]));
-  const porNome = new Map(funcs.map(f => [chaveNome(f.nome), f]));
-
-  // Batidas da semana por funcionário e dia, separando o intervalo pré-assinalado
-  const dias: Record<string, Record<string, { b: number[]; pre: number[] }>> = {};
-  (ponto.batidas || []).forEach((x: any) => {
-    if (x.data < inicio || x.data > fim) return;
-    const f = porCodigo.get(x.codigo) || porNome.get(chaveNome(x.nome || ''));
-    if (!f || !ativoEm(f, x.data)) return;
-    const d = ((dias[f.id] = dias[f.id] || {})[x.data] = dias[f.id][x.data] || { b: [], pre: [] });
-    d[x.tipo === 'P' ? 'pre' : 'b'].push(x.min);
-  });
-
-  const linhas = [`*Relatório de ponto · ${brCurta(inicio)} a ${brCurta(fim)}*`];
-  LOJAS.forEach(loja => {
-    const gente = funcs.filter(f => f.loja === loja && dias[f.id]).map(f => {
-      let extra = 0; const atrasos: number[] = [];
-      Object.entries(dias[f.id]).forEach(([data, { b, pre }]) => {
-        if (!b.length) return;
-        const r = resultadoDia(f, ordem(b), ordem(pre), cfg);
-        extra += r.extra;
-        // Veio cobrir na folga (fixa ou de domingo): não é atraso
-        const dow = new Date(data + 'T12:00Z').getUTCDay();
-        const naFolga = (f.folgas || []).includes(SEMANA[dow])
-          || (dow === 0 && (((estado.domingos || {})[f.loja] || {})[data] || []).includes(f.id));
-        if (!naFolga && r.atraso !== null && r.atraso > cfg.verde) atrasos.push(r.atraso);
-      });
-      return { nome: f.nome, extra, atrasos };
-    });
-    if (!gente.length) return;
-    const top = gente.filter(g => g.extra > 0).sort((a, b) => b.extra - a.extra).slice(0, 3);
-    const atrasados = gente.filter(g => g.atrasos.length > 1)
-      .sort((a, b) => b.atrasos.length - a.atrasos.length || b.atrasos.reduce((s, x) => s + x, 0) - a.atrasos.reduce((s, x) => s + x, 0));
-    linhas.push('', `🏪 *${loja}*`, '_Mais hora extra_');
-    linhas.push(...(top.length ? top.map((g, i) => `${i + 1}. ${g.nome} — ${horas(g.extra)}`) : ['ninguém fez hora extra']));
-    linhas.push('_Atrasou mais de uma vez_');
-    linhas.push(...(atrasados.length
-      ? atrasados.map(g => `• ${g.nome} — ${g.atrasos.length}x (total ${horas(g.atrasos.reduce((s, x) => s + x, 0))})`)
-      : ['ninguém']));
-  });
-  if (linhas.length === 1) linhas.push('', 'Sem batidas nesta semana.');
-  return linhas.join('\n');
-}
-
-// Envia pela uazapi (servidor, token da instância e número ficam na tabela "segredos")
-async function enviarWhatsapp(texto: string) {
-  const [servidor, token, numero] = await Promise.all([segredo('uazapi_url'), segredo('uazapi_token'), segredo('whatsapp_numero')]);
-  if (!servidor || !token || !numero) throw new Error('Falta cadastrar uazapi_url, uazapi_token ou whatsapp_numero');
-  const r = await fetch(`${servidor.replace(/\/+$/, '')}/send/text`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', token }, body: JSON.stringify({ number: numero, text: texto }),
-  });
-  if (!r.ok) throw new Error(`uazapi ${r.status}: ${(await r.text()).slice(0, 200)}`);
-}
-
 // ---------- Rotas ----------
 
 Deno.serve(async req => {
@@ -261,14 +158,12 @@ Deno.serve(async req => {
   try {
     if (acao === 'sincronizar' || acao === 'enviar' || acao === 'relatorio') {
       if (req.headers.get('x-rh-servidor') !== (await segredo('servidor'))) return resposta({ erro: 'não autorizado' }, 401);
-      // Relatório da semana passada (ou ?inicio=segunda) no WhatsApp; ?previa=1 só devolve o texto
+      // Relatório da semana passada (ou ?inicio=segunda) em PDF no WhatsApp; ?previa=1 só gera o PDF e devolve o link
       if (acao === 'relatorio') {
         const hoje = iso(new Date(Date.now() - 3 * 3600000));
         const dow = new Date(hoje + 'T12:00Z').getUTCDay();
         const inicio = url.searchParams.get('inicio') || addDias(hoje, -((dow + 6) % 7) - 7);
-        const texto = await montarRelatorio(inicio);
-        if (url.searchParams.get('previa') !== '1') await enviarWhatsapp(texto);
-        return resposta({ ok: true, texto });
+        return resposta(await relatorioSemanal(db, segredo, inicio, url.searchParams.get('previa') === '1'));
       }
       if (acao === 'enviar') {
         const corpo = await req.json();
