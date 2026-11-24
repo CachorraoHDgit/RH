@@ -56,10 +56,12 @@ function resultadoDia(f: any, b: number[], pre: number[], cfg: any) {
   let extraDepois = 0;
   for (let i = 0; i + 1 < marcas.length; i += 2) extraDepois += Math.max(0, marcas[i + 1] - Math.max(marcas[i], limite));
   const cedo = entrada === null || semEntrada ? 0 : Math.max(0, entrada - b[0]);
-  return { atraso, semEntrada, extra: (cedo > cfg.chegadaCedo ? cedo : 0) + extraDepois };
+  const antes = cedo > cfg.chegadaCedo ? cedo : 0;
+  return { atraso, semEntrada, antes, depois: extraDepois, extra: antes + extraDepois };
 }
 
-type Pessoa = { nome: string; loja: string; extra: number; atrasos: number[]; semEntrada: number };
+// extra = antes (chegou mais cedo, na entrada) + depois (ficou depois do horário, na saída)
+type Pessoa = { nome: string; loja: string; extra: number; antes: number; depois: number; atrasos: number[]; semEntrada: number };
 type Semana = { inicio: string; fim: string; lojas: { loja: string; top: Pessoa[]; atrasados: Pessoa[]; gente: Pessoa[] }[] };
 
 // Números da semana (inicio = segunda)
@@ -87,11 +89,13 @@ async function calcularSemana(db: any, inicio: string): Promise<Semana> {
 
   const lojas = LOJAS.map(loja => {
     const gente: Pessoa[] = funcs.filter(f => f.loja === loja && dias[f.id]).map(f => {
-      const r: Pessoa = { nome: f.nome, loja, extra: 0, atrasos: [], semEntrada: 0 };
+      const r: Pessoa = { nome: f.nome, loja, extra: 0, antes: 0, depois: 0, atrasos: [], semEntrada: 0 };
       Object.entries(dias[f.id]).forEach(([data, { b, pre }]) => {
         if (!b.length) return;
         const d = resultadoDia(f, ordem(b), ordem(pre), cfg);
         r.extra += d.extra;
+        r.antes += d.antes;
+        r.depois += d.depois;
         if (d.semEntrada) r.semEntrada++;
         // Veio cobrir na folga (fixa ou de domingo): não é atraso
         const dow = new Date(data + 'T12:00Z').getUTCDay();
@@ -253,10 +257,14 @@ async function pdfRelatorio(s: Semana) {
   secao('Mais hora extra por loja', 'os 3 primeiros');
   const linhasExtra = s.lojas.flatMap(l => (l.top.length ? l.top : [null]).map((g, i) => ({
     novaLoja: i === 0,
-    c: [i === 0 ? l.loja : '', g ? `${i + 1}º` : '', g ? g.nome : 'Ninguém fez hora extra', g ? horas(g.extra) : '—'],
+    negrito: false,
+    c: [i === 0 ? l.loja : '', g ? `${i + 1}º` : '', g ? g.nome : 'Ninguém fez hora extra',
+      g ? (g.antes ? horas(g.antes) : '—') : '', g ? (g.depois ? horas(g.depois) : '—') : '', g ? horas(g.extra) : '—'],
   })));
-  tabela([{ t: 'Loja', w: 0.24 }, { t: '', w: 0.07 }, { t: 'Funcionário', w: 0.49 }, { t: 'Hora extra', w: 0.2, dir: true }], linhasExtra);
-  nota('Hora extra = chegou mais de 10 min antes do horário + o que passou do horário de saída (ou da meia-noite).');
+  tabela([{ t: 'Loja', w: 0.19 }, { t: '', w: 0.05 }, { t: 'Funcionário', w: 0.38 }, { t: 'Na entrada', w: 0.13, dir: true },
+    { t: 'Na saída', w: 0.12, dir: true }, { t: 'Total', w: 0.13, dir: true }], linhasExtra);
+  y += 6; nota('Na entrada = chegou mais de 10 min antes do horário (conta o tempo todo antes).');
+  y += 8; nota('Na saída = ficou depois da meia-noite (ou do horário de saída, se for depois da meia-noite).');
 
   // Atrasos: quem atrasou 2 vezes ou mais
   secao('Atrasou mais de uma vez', 'quem atrasou só 1 vez fica de fora');
